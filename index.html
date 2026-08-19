@@ -253,6 +253,15 @@
   .prof-context { background: var(--violetdim); border: 1px solid #3a3160; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; color: #c9baf7; margin-bottom: 16px; }
   .prof-prompt-card, .prof-custom-card { margin-bottom: 26px; }
   .prof-prompt-text { font-style: italic; }
+
+  /* Revisão espaçada (SRS) */
+  .toolbar-action-btn span { font-weight: 900; }
+  .srs-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .srs-status { font-size: 13px; color: #ddd; margin-bottom: 12px; font-weight: 600; }
+  .srs-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .srs-btn { flex: 1; min-width: 140px; border-radius: 9px; padding: 10px 12px; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: inherit; border: 1.5px solid var(--border); background: #141414; color: #ccc; }
+  .srs-btn.ok { border-color: var(--green); background: #0a180a; color: var(--greenl); }
+  .srs-btn.no { border-color: #5a3a10; background: #1a1200; color: #e0a030; }
 </style>
 
 <header>
@@ -292,6 +301,7 @@
       <button class="toolbar-action-btn" onclick="abrirComparador()">⚖️ Comparar</button>
       <button class="toolbar-action-btn" onclick="abrirRotinas()">📋 Rotinas</button>
       <button class="toolbar-action-btn" id="guia-revisao-btn" onclick="toggleGuiaRevisao()">🔁 Revisão</button>
+      <button class="toolbar-action-btn" id="guia-srs-btn" onclick="toggleGuiaSrsFilter()">📅 Revisar Hoje <span id="guia-srs-count"></span></button>
     </div>
   </div>
   <div class="count-label" id="guia-count"></div>
@@ -316,6 +326,7 @@
     <div class="filter-row" id="emagrecimento-filterRow"></div>
     <div class="toolbar-actions">
       <button class="toolbar-action-btn" id="emagrecimento-revisao-btn" onclick="toggleTrilhaRevisao('emagrecimento')">🔁 Modo Revisão</button>
+      <button class="toolbar-action-btn" id="emagrecimento-srs-btn" onclick="toggleTrilhaSrsFilter('emagrecimento')">📅 Revisar Hoje <span id="emagrecimento-srs-count"></span></button>
     </div>
   </div>
   <div class="count-label" id="emagrecimento-count"></div>
@@ -338,6 +349,7 @@
     <div class="filter-row" id="biomecanica-filterRow"></div>
     <div class="toolbar-actions">
       <button class="toolbar-action-btn" id="biomecanica-revisao-btn" onclick="toggleTrilhaRevisao('biomecanica')">🔁 Modo Revisão</button>
+      <button class="toolbar-action-btn" id="biomecanica-srs-btn" onclick="toggleTrilhaSrsFilter('biomecanica')">📅 Revisar Hoje <span id="biomecanica-srs-count"></span></button>
     </div>
   </div>
   <div class="count-label" id="biomecanica-count"></div>
@@ -397,6 +409,12 @@ function toggleGuiaRevisao() {
   document.getElementById('guia-revisao-btn').classList.toggle('active', guiaRevisaoMode);
   renderGuiaGrid(document.getElementById('guia-search').value);
 }
+let guiaSrsFilterMode = false;
+function toggleGuiaSrsFilter() {
+  guiaSrsFilterMode = !guiaSrsFilterMode;
+  document.getElementById('guia-srs-btn').classList.toggle('active', guiaSrsFilterMode);
+  renderGuiaGrid(document.getElementById('guia-search').value);
+}
 function getGuiaStatusMap() {
   try { const raw = localStorage.getItem('tj-guia-status'); return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; }
 }
@@ -431,7 +449,9 @@ function renderGuiaGrid(filter) {
     const matchesText = !f || e.nome.toLowerCase().includes(f) || e.grupo.toLowerCase().includes(f);
     const matchesGroup = guiaActiveGroup === 'Todos' || e.grupo === guiaActiveGroup;
     const matchesRevisao = !guiaRevisaoMode || statusMap[k] === 'domino';
-    return matchesText && matchesGroup && matchesRevisao;
+    const dueSet = guiaSrsFilterMode ? new Set(getDueKeys('guia')) : null;
+    const matchesSrs = !dueSet || dueSet.has(k);
+    return matchesText && matchesGroup && matchesRevisao && matchesSrs;
   });
   document.getElementById('guia-count').textContent = filtered.length + (filtered.length === 1 ? ' exercicio encontrado' : ' exercicios encontrados');
   if (filtered.length === 0) {
@@ -452,6 +472,8 @@ function renderGuiaGrid(filter) {
 function showGuiaDetail(key) {
   const e = EXERCICIOS[key];
   if (!e) return;
+  ensureSrsRecord('guia', key);
+  atualizarBadgesRevisao();
   document.getElementById('guia-toolbar').classList.add('hidden');
   document.getElementById('guia-count').classList.add('hidden');
   document.getElementById('guia-grid').classList.add('hidden');
@@ -491,6 +513,7 @@ function showGuiaDetail(key) {
   e.dicas.forEach(d => { html2 += '<div class="dica-item"><span class="dica-label">' + d.l + '</span><span class="dica-text">' + d.t + '</span></div>'; });
   html2 += '<div class="sec-title"><span>Pergunta de Fixação</span><div class="line"></div></div>';
   html2 += '<div class="card-box"><p>' + (e.pergunta_fixacao && e.pergunta_fixacao.trim() ? e.pergunta_fixacao : 'Ainda não adicionada.') + '</p></div>';
+  html2 += renderSrsCard('guia', key);
   html2 += '<div class="sec-title"><span>Rotinas</span><div class="line"></div></div>';
   html2 += '<div class="card-box">' + renderRotinaMembership(key) + '</div>';
   const notas = getGuiaNotas();
@@ -684,9 +707,80 @@ const TOPICOS_EMAGRECIMENTO = {"balanco-energetico": {"modulo": 1, "ordem": 1, "
 
 const TOPICOS_BIOMECANICA = {"planos-eixos-movimento": {"modulo": 1, "ordem": 1, "titulo": "Planos e Eixos de Movimento", "categoria": "Fundamentos de Biomecânica", "resumo": "A base para descrever e analisar qualquer movimento humano com precisão técnica: os três planos anatômicos e seus respectivos eixos de rotação.", "conteudo": [{"sub": "Plano Sagital", "texto": "Divide o corpo em metades esquerda e direita. Movimentos que acontecem 'para frente e para trás' ocorrem nesse plano — flexão e extensão de joelho, cotovelo, quadril. É o plano mais comum na maioria dos exercícios de musculação (agachamento, rosca direta, remada)."}, {"sub": "Plano Frontal", "texto": "Divide o corpo em metades anterior e posterior (frente e trás). Movimentos de 'lado a lado' acontecem nesse plano — abdução e adução do quadril e ombro. Exemplos: elevação lateral, abdução de quadril na cadeira abdutora."}, {"sub": "Plano Transverso", "texto": "Divide o corpo em metades superior e inferior. Movimentos de rotação acontecem nesse plano — rotação de tronco, rotação interna/externa de quadril e ombro. Exemplos: abdominal oblíquo na polia (torção), rotação de tronco em movimentos esportivos."}, {"sub": "Eixos de rotação", "texto": "Cada plano tem um eixo perpendicular a ele, ao redor do qual o movimento rotacional acontece: eixo látero-lateral (perpendicular ao plano sagital), eixo ântero-posterior (perpendicular ao plano frontal) e eixo longitudinal (perpendicular ao plano transverso). Entender o eixo de uma articulação específica ajuda a prever exatamente que tipo de movimento ela permite."}, {"sub": "Por que isso importa na prática", "texto": "A maioria dos exercícios de academia trabalha primariamente em um único plano. Isso é uma limitação real: o corpo se move nos três planos simultaneamente em atividades do dia a dia e esportivas. Reconhecer em qual plano um exercício atua ajuda a identificar lacunas no programa de treino e a variar estímulos de forma intencional, não aleatória."}], "aplicacao_pratica": ["Ao montar um programa de treino, verifique se os três planos de movimento estão sendo contemplados ao longo da semana, não só o sagital (o mais comum na musculação tradicional).", "Para alunas com objetivos funcionais ou esportivos, priorize incluir exercícios de plano frontal e transverso, frequentemente negligenciados.", "Ao explicar um exercício novo para uma aluna, identifique o plano de movimento — isso ajuda a comunicar a mecânica do exercício de forma mais precisa."], "pergunta_reflexao": "A elevação lateral com halteres acontece em qual plano de movimento? E o abdominal oblíquo na polia?"}, "torque-braco-momento": {"modulo": 1, "ordem": 2, "titulo": "Torque e Braço de Momento", "categoria": "Fundamentos de Biomecânica", "resumo": "O conceito mais importante para entender por que pequenas mudanças de postura ou ângulo alteram drasticamente a dificuldade e o músculo-alvo de um exercício.", "conteudo": [{"sub": "O que é torque", "texto": "Torque é o efeito rotacional produzido por uma força ao redor de uma articulação (eixo de rotação). É o que faz uma articulação girar — por exemplo, o torque gerado pelo peso de um halter ao redor do cotovelo durante uma rosca direta. Matematicamente, torque é o produto da força pela distância perpendicular entre a linha de ação dessa força e o eixo de rotação."}, {"sub": "Braço de momento (braço de alavanca)", "texto": "É essa distância perpendicular entre a força aplicada e o eixo de rotação da articulação. Quanto maior o braço de momento, maior o torque gerado pela mesma quantidade de força — ou seja, mais difícil fica o exercício, mesmo usando exatamente o mesmo peso."}, {"sub": "Por que a postura muda tudo", "texto": "Esse é o conceito por trás do exemplo do afundo que vimos no início do nosso trabalho: dependendo de como o tronco se inclina e onde o joelho se posiciona, o braço de momento aumenta ao redor do quadril (mais torque no glúteo) ou ao redor do joelho (mais torque no quadríceps), mesmo mantendo a mesma carga externa. Isso explica cientificamente por que 'pequenos ajustes técnicos podem mudar bastante o estímulo', como você mesma observou naquele material de referência."}, {"sub": "Aplicação em exercícios com peso livre", "texto": "Em exercícios com halteres livres, o braço de momento (e portanto o torque, e a dificuldade percebida) varia ao longo da amplitude de movimento, já que a distância entre a linha de força da gravidade e o eixo articular muda conforme o membro se move. É por isso que um exercício de peso livre geralmente tem um 'ponto mais difícil' na amplitude, diferente de exercícios na polia, onde a resistência é mais constante."}], "aplicacao_pratica": ["Ao ensinar uma aluna a ajustar a técnica de um exercício, explique que pequenas mudanças de ângulo alteram o braço de momento e, portanto, qual músculo recebe mais estímulo — isso empodera a aluna a entender o 'porquê', não só o 'como'.", "Use esse conceito para justificar variações técnicas propositais (como as duas versões de afundo com torque diferente) em vez de tratar como 'certo x errado' de forma simplista.", "Ao avaliar por que um exercício está sendo sentido em um músculo diferente do esperado, considere primeiro se a postura está alterando o braço de momento."], "pergunta_reflexao": "No agachamento, por que inclinar mais o tronco à frente tende a aumentar a exigência sobre o quadril/glúteo em relação ao joelho/quadríceps?"}, "curva-resistencia": {"modulo": 1, "ordem": 3, "titulo": "Curva de Resistência", "categoria": "Fundamentos de Biomecânica", "resumo": "Como a dificuldade de um exercício varia ao longo da amplitude de movimento, e por que isso é diferente entre peso livre, polia e máquinas.", "conteudo": [{"sub": "O que é curva de resistência", "texto": "É a forma como a resistência percebida (dificuldade) varia ao longo de toda a amplitude de um exercício. Nem todo exercício tem dificuldade constante do início ao fim do movimento — a maioria tem um ponto mais fácil e um ponto mais difícil, e entender onde esses pontos estão ajuda a compreender melhor o estímulo real gerado."}, {"sub": "Curva ascendente", "texto": "A resistência aumenta conforme o movimento progride, geralmente ficando mais difícil perto do final da amplitude. Exemplo clássico: agachamento livre com barra, onde o ponto mais difícil geralmente é logo ao sair do fundo do movimento."}, {"sub": "Curva descendente", "texto": "A resistência é maior no início do movimento e diminui conforme progride. Exemplo: rosca direta com halteres, onde o ponto mais difícil costuma ser próximo à extensão completa do cotovelo (o momento em que o braço de momento é maior em relação à gravidade)."}, {"sub": "Curva em sino (mais difícil no meio)", "texto": "A resistência é menor no início e no final, e maior no meio da amplitude. É comum em muitos exercícios de peso livre onde o braço de momento é máximo aproximadamente na metade do movimento."}, {"sub": "Diferença entre peso livre, polia e máquinas", "texto": "Peso livre (halteres, barras) tem curva de resistência que varia com o ângulo, seguindo os princípios de torque vistos no tópico anterior. Polias mantêm a resistência mais constante ao longo da amplitude, já que a direção do cabo permanece relativamente fixa. Máquinas com cames (discos excêntricos) são projetadas especificamente para tentar equalizar a resistência à curva de força natural do músculo, tornando o exercício desafiador de forma mais uniforme."}], "aplicacao_pratica": ["Para trabalhar um músculo especificamente na porção de maior alongamento, prefira exercícios com curva de resistência mais alta nessa fase (ex: crucifixo para peitoral no ponto de maior abertura).", "Combine diferentes tipos de curva de resistência (peso livre + polia) no treino de um mesmo grupo muscular para atingir a musculatura de forma mais completa ao longo de toda a amplitude.", "Explique para a aluna por que ela sente mais dificuldade em um ponto específico do movimento — isso não é fraqueza, é biomecânica esperada do exercício."], "pergunta_reflexao": "Por que o ponto mais difícil da rosca direta com halteres tende a ser próximo à extensão completa do braço, e não no meio do movimento?"}, "relacao-comprimento-tensao": {"modulo": 1, "ordem": 4, "titulo": "Relação Comprimento-Tensão", "categoria": "Fundamentos de Biomecânica", "resumo": "Por que um músculo produz força de forma diferente dependendo do seu comprimento no momento da contração — um dos conceitos mais importantes para entender ganho de força e hipertrofia.", "conteudo": [{"sub": "O princípio fisiológico", "texto": "Em nível microscópico, a força que um músculo consegue produzir depende do grau de sobreposição entre os filamentos de actina e miosina dentro do sarcômero (a unidade contrátil do músculo). Existe um comprimento ótimo em que essa sobreposição permite a maior força de contração possível — nem muito encurtado, nem muito alongado."}, {"sub": "Músculo muito encurtado", "texto": "Quando o músculo está em posição muito encurtada (por exemplo, o bíceps no topo de uma rosca direta com o cotovelo totalmente flexionado), há sobreposição excessiva dos filamentos, reduzindo a capacidade de gerar força máxima — é por isso que a contração de pico costuma ser mais sobre 'sentir' o músculo do que sobre força bruta."}, {"sub": "Músculo muito alongado", "texto": "Quando o músculo está muito alongado (por exemplo, o bíceps no início de uma rosca direta com o braço totalmente estendido), a sobreposição é insuficiente, também reduzindo a capacidade de força máxima naquele ponto específico — mas gerando maior estímulo de estiramento, relevante para hipertrofia."}, {"sub": "Aplicação prática: por que a rosca no banco inclinado é diferente", "texto": "Isso conecta diretamente com o exercício de Rosca Direta no Banco Inclinado que já está na sua biblioteca de exercícios: ao posicionar o braço atrás da linha do tronco, o bíceps começa o movimento em posição mais alongada que na rosca direta em pé, gerando um estímulo de treino diferente, especificamente na porção do músculo que responde melhor a esse tipo de alongamento sob carga."}, {"sub": "Relevância para hipertrofia", "texto": "Pesquisas recentes em ciência do exercício têm dado atenção especial a treinar músculos na posição de maior alongamento, sugerindo que esse tipo de estímulo pode ser particularmente eficiente para hipertrofia — o que justifica a inclusão de variações de exercícios que alonguem mais o músculo-alvo (como visto no crucifixo, no stiff, ou na rosca inclinada) dentro de um programa bem estruturado."}], "aplicacao_pratica": ["Ao montar um treino, inclua pelo menos uma variação de exercício que trabalhe o músculo-alvo em posição de maior alongamento, não só exercícios tradicionais.", "Explique para alunas mais avançadas por que exercícios como rosca inclinada ou stiff 'parecem mais difíceis logo no início' — é a relação comprimento-tensão em ação, não fraqueza.", "Use esse conceito para justificar cientificamente a inclusão de variações de exercícios na periodização do treino, não apenas por 'variar por variar'."], "pergunta_reflexao": "Por que a Rosca Direta no Banco Inclinado (com o braço atrás do tronco) pode gerar um estímulo diferente da Rosca Direta tradicional em pé, mesmo trabalhando o mesmo músculo principal?"}, "agonistas-sinergistas-estabilizadores": {"modulo": 1, "ordem": 5, "titulo": "Agonistas, Sinergistas e Estabilizadores", "categoria": "Fundamentos de Biomecânica", "resumo": "A classificação funcional dos músculos envolvidos em qualquer movimento, essencial para entender por que um exercício 'trabalha' vários músculos ao mesmo tempo, mas com papéis diferentes.", "conteudo": [{"sub": "Músculo Agonista (motor primário)", "texto": "É o músculo principal responsável por produzir o movimento desejado — por exemplo, o quadríceps no agachamento, ou o peitoral no supino. É o músculo que, na maioria dos exercícios, recebe o maior estímulo direto e costuma ser o foco declarado do exercício."}, {"sub": "Músculo Sinergista (motor secundário)", "texto": "Auxilia o agonista na produção do movimento, geralmente contribuindo de forma relevante mas não sendo o foco principal — por exemplo, o tríceps no supino (auxiliando o peitoral), ou o bíceps na remada (auxiliando o latíssimo do dorso). Na estrutura da sua biblioteca de exercícios, esses geralmente aparecem como 'músculos secundários'."}, {"sub": "Músculo Estabilizador", "texto": "Não produz o movimento principal, mas se contrai isometricamente (sem alterar significativamente de comprimento) para manter uma articulação ou segmento corporal estável durante a execução — por exemplo, o core durante um agachamento, ou o manguito rotador durante um desenvolvimento com halteres, evitando movimentos indesejados na articulação do ombro."}, {"sub": "Antagonista: o músculo do lado oposto", "texto": "É o músculo que realiza a ação oposta ao agonista no mesmo movimento articular — por exemplo, os isquiotibiais são antagonistas do quadríceps na extensão do joelho. Durante o movimento, o antagonista precisa relaxar de forma coordenada para permitir que o agonista execute o movimento com eficiência (um processo neuromuscular chamado inibição recíproca)."}, {"sub": "Por que essa classificação importa na prescrição", "texto": "Entender esses papéis ajuda a identificar por que um exercício composto (como agachamento ou levantamento terra) recruta tantos músculos diferentes ao mesmo tempo, e por que fadiga de um músculo sinergista ou estabilizador pode limitar o desempenho no exercício mesmo que o agonista principal ainda tenha capacidade de produzir mais força."}], "aplicacao_pratica": ["Ao avaliar por que uma aluna não consegue progredir carga em um exercício composto, considere se algum sinergista ou estabilizador (não o agonista principal) pode estar sendo o fator limitante.", "Use essa classificação para explicar de forma didática para as alunas por que um exercício 'trabalha vários músculos ao mesmo tempo' de formas diferentes.", "Ao montar um programa, tenha consciência de que músculos sinergistas se acumulam fadiga em múltiplos exercícios (ex: tríceps em todo exercício de empurrar), o que deve ser considerado na distribuição de volume semanal."], "pergunta_reflexao": "No exercício de Remada Curvada, o latíssimo do dorso é o agonista. Que papel o bíceps braquial desempenha nesse mesmo movimento, e por que isso pode eventualmente limitar quantas repetições a aluna consegue fazer?"}};
 
+// ===== REVISÃO ESPAÇADA (SRS) — compartilhado por guia, emagrecimento e biomecanica =====
+const SRS_INTERVALS = [3, 7, 14, 30]; // dias
+function getSrsMap(tipo) {
+  try { const raw = localStorage.getItem('tj-srs-' + tipo); return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; }
+}
+function saveSrsMap(tipo, map) {
+  try { localStorage.setItem('tj-srs-' + tipo, JSON.stringify(map)); } catch (e) {}
+}
+function ensureSrsRecord(tipo, key) {
+  const map = getSrsMap(tipo);
+  if (!map[key]) {
+    const now = new Date();
+    const due = new Date(now.getTime() + SRS_INTERVALS[0] * 86400000);
+    map[key] = { firstStudiedAt: now.toISOString(), lastReviewedAt: now.toISOString(), intervalIndex: 0, nextReviewDue: due.toISOString() };
+    saveSrsMap(tipo, map);
+  }
+  return map[key];
+}
+function marcarRevisado(tipo, key, sucesso) {
+  const map = getSrsMap(tipo);
+  const rec = map[key] || ensureSrsRecord(tipo, key);
+  const now = new Date();
+  rec.intervalIndex = sucesso ? Math.min(rec.intervalIndex + 1, SRS_INTERVALS.length - 1) : 0;
+  rec.lastReviewedAt = now.toISOString();
+  rec.nextReviewDue = new Date(now.getTime() + SRS_INTERVALS[rec.intervalIndex] * 86400000).toISOString();
+  map[key] = rec;
+  saveSrsMap(tipo, map);
+  atualizarBadgesRevisao();
+}
+function getDueKeys(tipo) {
+  const map = getSrsMap(tipo);
+  const now = new Date();
+  return Object.keys(map).filter(k => new Date(map[k].nextReviewDue) <= now);
+}
+function formatSrsStatus(rec) {
+  const now = new Date();
+  const due = new Date(rec.nextReviewDue);
+  const diffDays = Math.ceil((due - now) / 86400000);
+  if (diffDays <= 0) {
+    const overdue = Math.abs(diffDays);
+    return overdue === 0 ? 'Revisão disponível hoje!' : 'Atrasado há ' + overdue + ' dia' + (overdue > 1 ? 's' : '') + '.';
+  }
+  return 'Próxima revisão em ' + diffDays + ' dia' + (diffDays > 1 ? 's' : '') + '.';
+}
+function renderSrsCard(tipo, key) {
+  const rec = getSrsMap(tipo)[key];
+  if (!rec) return '';
+  let html = '<div class="sec-title"><span>Revisão Espaçada</span><div class="line"></div></div>';
+  html += '<div class="srs-card"><div class="srs-status">' + formatSrsStatus(rec) + '</div>';
+  html += '<div class="srs-actions">';
+  html += '<button class="srs-btn ok" onclick="responderRevisao(\'' + tipo + '\',\'' + key + '\',true)">✅ Revisei</button>';
+  html += '<button class="srs-btn no" onclick="responderRevisao(\'' + tipo + '\',\'' + key + '\',false)">🔁 Preciso rever de novo</button>';
+  html += '</div></div>';
+  return html;
+}
+function responderRevisao(tipo, key, sucesso) {
+  marcarRevisado(tipo, key, sucesso);
+  if (tipo === 'guia') showGuiaDetail(key);
+  else showTrilhaDetail(tipo, key);
+}
+function updateSrsBadge(tipo) {
+  const count = getDueKeys(tipo).length;
+  const el = document.getElementById(tipo + '-srs-count');
+  if (el) el.textContent = count > 0 ? '(' + count + ')' : '';
+}
+function atualizarBadgesRevisao() {
+  updateSrsBadge('guia');
+  updateSrsBadge('emagrecimento');
+  updateSrsBadge('biomecanica');
+}
+
 let trilhaState = {
-  emagrecimento: { activeCategoria: 'Todos', lidos: {}, revisaoMode: false },
-  biomecanica: { activeCategoria: 'Todos', lidos: {}, revisaoMode: false }
+  emagrecimento: { activeCategoria: 'Todos', lidos: {}, revisaoMode: false, srsFilterMode: false },
+  biomecanica: { activeCategoria: 'Todos', lidos: {}, revisaoMode: false, srsFilterMode: false }
 };
 const TRILHA_CONFIG = {
   emagrecimento: { data: TOPICOS_EMAGRECIMENTO, total: 28, storageLidos: 'tj-lidos-emagrecimento' },
@@ -703,6 +797,13 @@ function marcarComoLido(trilhaKey, topicKey) {
   trilhaState[trilhaKey].lidos[topicKey] = true;
   try { localStorage.setItem(TRILHA_CONFIG[trilhaKey].storageLidos, JSON.stringify(trilhaState[trilhaKey].lidos)); } catch (e) {}
   updateTrilhaProgress(trilhaKey);
+  ensureSrsRecord(trilhaKey, topicKey);
+  atualizarBadgesRevisao();
+}
+function toggleTrilhaSrsFilter(trilhaKey) {
+  trilhaState[trilhaKey].srsFilterMode = !trilhaState[trilhaKey].srsFilterMode;
+  document.getElementById(trilhaKey + '-srs-btn').classList.toggle('active', trilhaState[trilhaKey].srsFilterMode);
+  renderTrilhaList(trilhaKey, document.getElementById(trilhaKey + '-search').value);
 }
 function updateTrilhaProgress(trilhaKey) {
   const total = TRILHA_CONFIG[trilhaKey].total;
@@ -763,7 +864,9 @@ function renderTrilhaList(trilhaKey, filter) {
     const matchesText = !f || t.titulo.toLowerCase().includes(f) || t.resumo.toLowerCase().includes(f) || t.categoria.toLowerCase().includes(f);
     const matchesCat = activeCategoria === 'Todos' || t.categoria === activeCategoria;
     const matchesRevisao = !trilhaState[trilhaKey].revisaoMode || trilhaState[trilhaKey].lidos[k];
-    return matchesText && matchesCat && matchesRevisao;
+    const dueSet = trilhaState[trilhaKey].srsFilterMode ? new Set(getDueKeys(trilhaKey)) : null;
+    const matchesSrs = !dueSet || dueSet.has(k);
+    return matchesText && matchesCat && matchesRevisao && matchesSrs;
   });
   const countLabel = document.getElementById(trilhaKey + '-count');
   countLabel.textContent = filtered.length + (filtered.length === 1 ? ' tópico encontrado' : ' tópicos encontrados');
@@ -809,6 +912,7 @@ function showTrilhaDetail(trilhaKey, key) {
   t.aplicacao_pratica.forEach(p => { html += '<div class="pratica-item"><span class="ic">&rarr;</span>' + p + '</div>'; });
   html += '</div>';
   html += '<div class="reflex-box"><div class="reflex-title">Pergunta para Reflexão</div><div class="reflex-text">' + t.pergunta_reflexao + '</div></div>';
+  html += renderSrsCard(trilhaKey, key);
   const notas = getTrilhaNotas(trilhaKey);
   html += '<div class="sec-title"><span>Minhas Anotações</span><div class="line"></div></div>';
   html += '<textarea class="note-textarea" id="trilha-note-input" placeholder="Escreva aqui suas anotações pessoais sobre este tópico...">' + (notas[key] || '') + '</textarea>';
@@ -851,6 +955,7 @@ renderTrilhaList('biomecanica', '');
 updateTrilhaProgress('biomecanica');
 document.getElementById('emagrecimento-search').addEventListener('input', (e) => renderTrilhaList('emagrecimento', e.target.value));
 document.getElementById('biomecanica-search').addEventListener('input', (e) => renderTrilhaList('biomecanica', e.target.value));
+atualizarBadgesRevisao();
 
 // ===== PROFESSOR (compartilhado) =====
 const PROF_SYSTEM_SHORT = "Aja como um professor especialista em biomecânica, cinesiologia, fisiologia do exercício e emagrecimento feminino, me ensinando de forma socrática: não entregue a resposta pronta de cara, faça uma ou duas perguntas guia antes de explicar. Se eu pedir a resposta direta, aí sim explique, e depois teste meu entendimento com 1-2 perguntas.";
@@ -970,6 +1075,7 @@ function importarBackup(event) {
       renderTrilhaList('biomecanica', document.getElementById('biomecanica-search').value);
       updateTrilhaProgress('emagrecimento');
       updateTrilhaProgress('biomecanica');
+      atualizarBadgesRevisao();
       setTimeout(fecharBackupModal, 1800);
     } catch (err) {
       setBackupStatus('Erro ao importar: ' + err.message, true);
