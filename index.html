@@ -293,6 +293,15 @@
   .dash-review-icon { font-size: 18px; }
   .dash-review-title { font-size: 13px; font-weight: 700; color: #fff; }
   .dash-review-mod { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Modo Quiz */
+  .quiz-view { display: none; max-width: 780px; margin: 0 auto; padding: 16px 16px 60px; }
+  .quiz-view.active { display: block; }
+  .quiz-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 16px; margin-bottom: 16px; }
+  .quiz-item-title { font-size: 11px; font-weight: 800; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .quiz-question { font-size: 16px; font-weight: 700; color: #fff; line-height: 1.5; }
+  .quiz-answer { min-height: 110px; }
+  .quiz-feedback { font-size: 13px; font-weight: 700; color: #ddd; margin-bottom: 14px; padding: 10px 14px; background: var(--card); border-radius: 8px; border: 1px solid var(--border); }
 </style>
 
 <header>
@@ -361,6 +370,7 @@
       <button class="toolbar-action-btn" onclick="abrirRotinas()">📋 Rotinas</button>
       <button class="toolbar-action-btn" id="guia-revisao-btn" onclick="toggleGuiaRevisao()">🔁 Revisão</button>
       <button class="toolbar-action-btn" id="guia-srs-btn" onclick="toggleGuiaSrsFilter()">📅 Revisar Hoje <span id="guia-srs-count"></span></button>
+      <button class="toolbar-action-btn" onclick="abrirQuiz('guia')">🧠 Modo Quiz</button>
     </div>
   </div>
   <div class="count-label" id="guia-count"></div>
@@ -368,6 +378,7 @@
   <div class="detail" id="guia-detail"></div>
   <div class="comparador" id="guia-comparador"></div>
   <div class="rotinas-view" id="guia-rotinas"></div>
+  <div class="quiz-view" id="guia-quiz"></div>
   <div class="footer-note">Guia de Exercícios · Team Jesga</div>
 </div>
 
@@ -386,11 +397,13 @@
     <div class="toolbar-actions">
       <button class="toolbar-action-btn" id="emagrecimento-revisao-btn" onclick="toggleTrilhaRevisao('emagrecimento')">🔁 Modo Revisão</button>
       <button class="toolbar-action-btn" id="emagrecimento-srs-btn" onclick="toggleTrilhaSrsFilter('emagrecimento')">📅 Revisar Hoje <span id="emagrecimento-srs-count"></span></button>
+      <button class="toolbar-action-btn" onclick="abrirQuiz('emagrecimento')">🧠 Modo Quiz</button>
     </div>
   </div>
   <div class="count-label" id="emagrecimento-count"></div>
   <div id="emagrecimento-list"></div>
   <div class="detail" id="emagrecimento-detail"></div>
+  <div class="quiz-view" id="emagrecimento-quiz"></div>
   <div class="footer-note">Trilha de Emagrecimento Feminino · Team Jesga</div>
 </div>
 
@@ -409,11 +422,13 @@
     <div class="toolbar-actions">
       <button class="toolbar-action-btn" id="biomecanica-revisao-btn" onclick="toggleTrilhaRevisao('biomecanica')">🔁 Modo Revisão</button>
       <button class="toolbar-action-btn" id="biomecanica-srs-btn" onclick="toggleTrilhaSrsFilter('biomecanica')">📅 Revisar Hoje <span id="biomecanica-srs-count"></span></button>
+      <button class="toolbar-action-btn" onclick="abrirQuiz('biomecanica')">🧠 Modo Quiz</button>
     </div>
   </div>
   <div class="count-label" id="biomecanica-count"></div>
   <div id="biomecanica-list"></div>
   <div class="detail" id="biomecanica-detail"></div>
+  <div class="quiz-view" id="biomecanica-quiz"></div>
   <div class="footer-note">Trilha de Biomecânica · Team Jesga</div>
 </div>
 
@@ -1113,6 +1128,121 @@ function renderDashboard() {
     reviewSection.classList.add('hidden');
     listEl.innerHTML = '';
   }
+}
+
+// ===== MODO QUIZ / AUTOAVALIAÇÃO =====
+let quizState = {};
+function getQuizPool(tipo) {
+  const studiedKeys = Object.keys(getSrsMap(tipo));
+  if (tipo === 'guia') {
+    return studiedKeys.filter(k => EXERCICIOS[k] && EXERCICIOS[k].pergunta_fixacao && EXERCICIOS[k].pergunta_fixacao.trim());
+  }
+  const data = TRILHA_CONFIG[tipo].data;
+  return studiedKeys.filter(k => data[k] && data[k].pergunta_reflexao);
+}
+function getQuizQuestion(tipo, key) {
+  if (tipo === 'guia') return EXERCICIOS[key].pergunta_fixacao;
+  return TRILHA_CONFIG[tipo].data[key].pergunta_reflexao;
+}
+function getQuizListEl(tipo) {
+  return document.getElementById(tipo === 'guia' ? 'guia-grid' : tipo + '-list');
+}
+function renderQuizGabarito(tipo, key) {
+  let html = '';
+  if (tipo === 'guia') {
+    const e = EXERCICIOS[key];
+    html += '<div class="sec-title"><span>Sobre</span><div class="line"></div></div><div class="card-box"><p>' + e.sobre + '</p></div>';
+    html += '<div class="sec-title"><span>Musculos Primarios</span><div class="line"></div></div>';
+    e.primarios.forEach(m => { html += '<div class="musc-item"><div class="musc-dot p"></div><div><div class="musc-name">' + m.n + '</div><div class="musc-desc">' + m.d + '</div></div></div>'; });
+    html += '<div class="sec-title"><span>Dicas</span><div class="line"></div></div>';
+    e.dicas.forEach(d => { html += '<div class="dica-item"><span class="dica-label">' + d.l + '</span><span class="dica-text">' + d.t + '</span></div>'; });
+    return html;
+  }
+  const t = TRILHA_CONFIG[tipo].data[key];
+  t.conteudo.forEach(c => { html += '<div class="sub-block"><div class="sub-title">' + c.sub + '</div><div class="sub-text">' + c.texto + '</div></div>'; });
+  html += '<div class="pratica-box"><div class="pratica-title">Aplicação Prática</div>';
+  t.aplicacao_pratica.forEach(p => { html += '<div class="pratica-item"><span class="ic">&rarr;</span>' + p + '</div>'; });
+  html += '</div>';
+  return html;
+}
+function abrirQuiz(tipo) {
+  document.getElementById(tipo + '-toolbar').classList.add('hidden');
+  document.getElementById(tipo + '-count').classList.add('hidden');
+  getQuizListEl(tipo).classList.add('hidden');
+  document.getElementById(tipo + '-quiz').classList.add('active');
+  quizState[tipo] = { key: null, revealed: false, respondida: false, asked: [] };
+  proximaPerguntaQuiz(tipo);
+}
+function fecharQuiz(tipo) {
+  document.getElementById(tipo + '-quiz').classList.remove('active');
+  document.getElementById(tipo + '-quiz').innerHTML = '';
+  document.getElementById(tipo + '-toolbar').classList.remove('hidden');
+  document.getElementById(tipo + '-count').classList.remove('hidden');
+  getQuizListEl(tipo).classList.remove('hidden');
+}
+function renderQuizEmpty(tipo) {
+  const el = document.getElementById(tipo + '-quiz');
+  el.innerHTML = '<button class="back-btn" onclick="fecharQuiz(\'' + tipo + '\')">&larr; Voltar</button>' +
+    '<div class="no-results">Você precisa estudar pelo menos um item deste módulo antes de fazer o quiz.</div>';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function proximaPerguntaQuiz(tipo) {
+  const pool = getQuizPool(tipo);
+  if (pool.length === 0) { renderQuizEmpty(tipo); return; }
+  const st = quizState[tipo];
+  let disponiveis = pool.filter(k => !st.asked.includes(k));
+  if (disponiveis.length === 0) { st.asked = []; disponiveis = pool; }
+  const key = disponiveis[Math.floor(Math.random() * disponiveis.length)];
+  st.asked.push(key);
+  st.key = key;
+  st.revealed = false;
+  st.respondida = false;
+  st.respostaTexto = '';
+  renderQuiz(tipo);
+}
+function renderQuiz(tipo) {
+  const st = quizState[tipo];
+  const key = st.key;
+  const title = getItemLabel(tipo, key);
+  const question = getQuizQuestion(tipo, key);
+  const el = document.getElementById(tipo + '-quiz');
+  let html = '<button class="back-btn" onclick="fecharQuiz(\'' + tipo + '\')">&larr; Sair do quiz</button>';
+  html += '<div class="quiz-card"><div class="quiz-item-title">' + title + '</div><div class="quiz-question">' + question + '</div></div>';
+  if (!st.revealed) {
+    html += '<textarea class="note-textarea quiz-answer" id="quiz-answer-input" placeholder="Escreva sua resposta com suas próprias palavras...">' + (st.respostaTexto || '') + '</textarea>';
+    html += '<button class="note-save-btn" onclick="revelarRespostaQuiz(\'' + tipo + '\')">👁 Ver resposta esperada</button>';
+  } else {
+    html += '<div class="sec-title"><span>Sua resposta</span><div class="line"></div></div>';
+    html += '<div class="card-box"><p>' + (st.respostaTexto ? st.respostaTexto.replace(/</g, '&lt;') : '<span style="color:var(--muted);font-style:italic;">(em branco)</span>') + '</p></div>';
+    html += '<div class="sec-title"><span>Gabarito</span><div class="line"></div></div>';
+    html += renderQuizGabarito(tipo, key);
+    if (!st.respondida) {
+      html += '<div class="sec-title"><span>Isso ajudou a fixar?</span><div class="line"></div></div>';
+      html += '<div class="srs-actions">';
+      html += '<button class="srs-btn ok" onclick="responderQuizFixou(\'' + tipo + '\',true)">👍 Sim, ajudou</button>';
+      html += '<button class="srs-btn no" onclick="responderQuizFixou(\'' + tipo + '\',false)">👎 Não, preciso revisar</button>';
+      html += '</div>';
+    } else {
+      html += '<div class="quiz-feedback">' + (st.fixou ? '✅ Ótimo! Próxima revisão adiada.' : '🔁 Revisão reforçada — vamos ver isso de novo em breve.') + '</div>';
+      html += '<button class="note-save-btn" onclick="proximaPerguntaQuiz(\'' + tipo + '\')">➡️ Próxima pergunta</button>';
+    }
+  }
+  el.innerHTML = html;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function revelarRespostaQuiz(tipo) {
+  const st = quizState[tipo];
+  const input = document.getElementById('quiz-answer-input');
+  st.respostaTexto = input ? input.value : '';
+  st.revealed = true;
+  renderQuiz(tipo);
+}
+function responderQuizFixou(tipo, fixou) {
+  const st = quizState[tipo];
+  marcarRevisado(tipo, st.key, fixou);
+  st.respondida = true;
+  st.fixou = fixou;
+  renderQuiz(tipo);
 }
 
 loadLidos('emagrecimento');
