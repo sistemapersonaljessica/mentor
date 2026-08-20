@@ -17,6 +17,7 @@
 
   .tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 16px; overflow-x: auto; }
   .tab-btn { padding: 12px 14px; font-size: 12.5px; font-weight: 600; color: #555; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; }
+  .tab-btn.active[data-tab="dashboard"] { color: #fff; border-bottom-color: #fff; }
   .tab-btn.active[data-tab="guia"] { color: var(--yellow); border-bottom-color: var(--yellow); }
   .tab-btn.active[data-tab="emagrecimento"] { color: var(--pink); border-bottom-color: var(--pink); }
   .tab-btn.active[data-tab="biomecanica"] { color: var(--blue); border-bottom-color: var(--blue); }
@@ -262,6 +263,36 @@
   .srs-btn { flex: 1; min-width: 140px; border-radius: 9px; padding: 10px 12px; font-size: 12.5px; font-weight: 700; cursor: pointer; font-family: inherit; border: 1.5px solid var(--border); background: #141414; color: #ccc; }
   .srs-btn.ok { border-color: var(--green); background: #0a180a; color: var(--greenl); }
   .srs-btn.no { border-color: #5a3a10; background: #1a1200; color: #e0a030; }
+
+  /* Dashboard */
+  .dash-wrap { max-width: 780px; margin: 0 auto; padding: 20px 16px 60px; }
+  .dash-header { margin-bottom: 18px; }
+  .dash-title { font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 8px; }
+  .dash-total { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+  .dash-total-fill { background: linear-gradient(90deg, var(--yellow), var(--pink), var(--blue)); }
+  .dash-due-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #33200a; border: 1.5px solid #c98a1f; color: #f5c56a; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; cursor: pointer; font-size: 13px; font-weight: 700; }
+  .dash-due-banner:hover { border-color: #f5c56a; }
+  .dash-due-banner.hidden { display: none; }
+  .dash-due-arrow { font-size: 16px; }
+  .dash-continue { background: var(--violetdim); border: 1.5px solid var(--violet); border-radius: 12px; padding: 14px 16px; margin-bottom: 20px; cursor: pointer; }
+  .dash-continue:hover { border-color: #c9baf7; }
+  .dash-continue-label { font-size: 10.5px; font-weight: 800; color: var(--violet); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .dash-continue-title { font-size: 14px; font-weight: 700; color: #fff; }
+  .dash-modules { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+  .dash-mod-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 15px 16px; cursor: pointer; transition: border-color 0.2s; }
+  .dash-mod-card:hover { border-color: var(--mod-color); }
+  .dash-mod-head { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+  .dash-mod-icon { font-size: 17px; }
+  .dash-mod-name { font-size: 14.5px; font-weight: 700; color: #fff; flex: 1; }
+  .dash-mod-due { background: #33200a; color: #f5c56a; border: 1px solid #c98a1f; border-radius: 10px; padding: 2px 9px; font-size: 11px; font-weight: 800; }
+  .dash-mod-card .progress-track { margin-bottom: 8px; }
+  .dash-mod-count { font-size: 11.5px; color: var(--muted); }
+  .dash-review-section.hidden { display: none; }
+  .dash-review-item { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; }
+  .dash-review-item:hover { border-color: #f5c56a; }
+  .dash-review-icon { font-size: 18px; }
+  .dash-review-title { font-size: 13px; font-weight: 700; color: #fff; }
+  .dash-review-mod { font-size: 11px; color: var(--muted); margin-top: 2px; }
 </style>
 
 <header>
@@ -287,13 +318,41 @@
 </div>
 
 <div class="tabs">
-  <div class="tab-btn active" id="tabBtn-guia" data-tab="guia" onclick="switchTab('guia')">📋 Exercícios</div>
+  <div class="tab-btn active" id="tabBtn-dashboard" data-tab="dashboard" onclick="switchTab('dashboard')">🏠 Início</div>
+  <div class="tab-btn" id="tabBtn-guia" data-tab="guia" onclick="switchTab('guia')">📋 Exercícios</div>
   <div class="tab-btn" id="tabBtn-emagrecimento" data-tab="emagrecimento" onclick="switchTab('emagrecimento')">🩷 Emagrecimento</div>
   <div class="tab-btn" id="tabBtn-biomecanica" data-tab="biomecanica" onclick="switchTab('biomecanica')">📐 Biomecânica</div>
   <div class="tab-btn" id="tabBtn-professor" data-tab="professor" onclick="switchTab('professor')">🎓 Professor</div>
 </div>
 
-<div class="view view-guia active" id="view-guia">
+<div class="view view-dashboard active" id="view-dashboard">
+  <div class="dash-wrap">
+    <div class="dash-header">
+      <div class="dash-title">Bem-vinda de volta 👋</div>
+      <div class="dash-total" id="dash-total-label"></div>
+      <div class="progress-track"><div class="progress-fill dash-total-fill" id="dash-total-fill"></div></div>
+    </div>
+
+    <div class="dash-due-banner hidden" id="dash-due-banner" onclick="irParaRevisaoGeral()">
+      <span id="dash-due-text"></span><span class="dash-due-arrow">&rarr;</span>
+    </div>
+
+    <div class="dash-continue hidden" id="dash-continue-card" onclick="continuarDeOndeParou()">
+      <div class="dash-continue-label">Continuar de onde parei</div>
+      <div class="dash-continue-title" id="dash-continue-title"></div>
+    </div>
+
+    <div class="sec-title"><span>Seus módulos</span><div class="line"></div></div>
+    <div class="dash-modules" id="dash-modules"></div>
+
+    <div class="dash-review-section hidden" id="dash-review-section">
+      <div class="sec-title"><span>Para Revisar Hoje</span><div class="line"></div></div>
+      <div id="dash-review-list"></div>
+    </div>
+  </div>
+</div>
+
+<div class="view view-guia" id="view-guia">
   <div class="toolbar" id="guia-toolbar">
     <input class="search-input" id="guia-search" type="text" placeholder="Buscar exercicio ou musculo...">
     <div class="filter-row" id="guia-filterRow"></div>
@@ -474,6 +533,7 @@ function showGuiaDetail(key) {
   if (!e) return;
   ensureSrsRecord('guia', key);
   atualizarBadgesRevisao();
+  setLastViewed('guia', key);
   document.getElementById('guia-toolbar').classList.add('hidden');
   document.getElementById('guia-count').classList.add('hidden');
   document.getElementById('guia-grid').classList.add('hidden');
@@ -897,6 +957,7 @@ function showTrilhaDetail(trilhaKey, key) {
   const t = data[key];
   if (!t) return;
   marcarComoLido(trilhaKey, key);
+  setLastViewed(trilhaKey, key);
   renderTrilhaList(trilhaKey, document.getElementById(trilhaKey + '-search').value);
   document.getElementById(trilhaKey + '-toolbar').classList.add('hidden');
   document.getElementById(trilhaKey + '-count').classList.add('hidden');
@@ -939,10 +1000,119 @@ function backToTrilhaList(trilhaKey) {
 }
 
 function switchTab(tab) {
-  ['guia', 'emagrecimento', 'biomecanica', 'professor'].forEach(t => {
+  ['dashboard', 'guia', 'emagrecimento', 'biomecanica', 'professor'].forEach(t => {
     document.getElementById('tabBtn-' + t).classList.toggle('active', t === tab);
     document.getElementById('view-' + t).classList.toggle('active', t === tab);
   });
+  if (tab === 'dashboard') renderDashboard();
+}
+
+// ===== DASHBOARD =====
+const MODULOS_DASH = [
+  { tipo: 'guia', label: 'Guia de Exercícios', icon: '📋', color: '#F5C518', total: 91 },
+  { tipo: 'emagrecimento', label: 'Trilha de Emagrecimento', icon: '🩷', color: '#F5518C', total: 28 },
+  { tipo: 'biomecanica', label: 'Trilha de Biomecânica', icon: '📐', color: '#4FC3F7', total: 5 }
+];
+function getStudiedCount(tipo) {
+  return Object.keys(getSrsMap(tipo)).length;
+}
+function getItemLabel(tipo, key) {
+  if (tipo === 'guia') return EXERCICIOS[key] ? EXERCICIOS[key].nome : null;
+  const data = TRILHA_CONFIG[tipo] ? TRILHA_CONFIG[tipo].data : null;
+  return data && data[key] ? data[key].titulo : null;
+}
+function getLastViewed() {
+  try { const raw = localStorage.getItem('tj-last-viewed'); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function setLastViewed(tipo, key) {
+  try { localStorage.setItem('tj-last-viewed', JSON.stringify({ tipo: tipo, key: key })); } catch (e) {}
+}
+function abrirItemDashboard(tipo, key) {
+  switchTab(tipo);
+  if (tipo === 'guia') showGuiaDetail(key);
+  else showTrilhaDetail(tipo, key);
+}
+function continuarDeOndeParou() {
+  const last = getLastViewed();
+  if (last) abrirItemDashboard(last.tipo, last.key);
+}
+function irParaRevisaoGeral() {
+  let best = null, bestCount = 0;
+  MODULOS_DASH.forEach(m => {
+    const c = getDueKeys(m.tipo).length;
+    if (c > bestCount) { bestCount = c; best = m.tipo; }
+  });
+  if (!best) return;
+  switchTab(best);
+  if (best === 'guia') { if (!guiaSrsFilterMode) toggleGuiaSrsFilter(); }
+  else { if (!trilhaState[best].srsFilterMode) toggleTrilhaSrsFilter(best); }
+}
+function renderDashboard() {
+  const totalGeral = MODULOS_DASH.reduce((s, m) => s + m.total, 0);
+  const estudadoGeral = MODULOS_DASH.reduce((s, m) => s + getStudiedCount(m.tipo), 0);
+  const pct = totalGeral > 0 ? Math.round((estudadoGeral / totalGeral) * 100) : 0;
+  document.getElementById('dash-total-label').textContent = estudadoGeral + '/' + totalGeral + ' itens estudados no total';
+  document.getElementById('dash-total-fill').style.width = pct + '%';
+
+  let dueTotal = 0;
+  MODULOS_DASH.forEach(m => { dueTotal += getDueKeys(m.tipo).length; });
+  const banner = document.getElementById('dash-due-banner');
+  if (dueTotal > 0) {
+    document.getElementById('dash-due-text').textContent = '🔔 Você tem ' + dueTotal + ' ite' + (dueTotal === 1 ? 'm' : 'ns') + ' pronto' + (dueTotal === 1 ? '' : 's') + ' para revisar hoje';
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
+
+  const last = getLastViewed();
+  const continueCard = document.getElementById('dash-continue-card');
+  const lastLabel = last ? getItemLabel(last.tipo, last.key) : null;
+  if (lastLabel) {
+    document.getElementById('dash-continue-title').textContent = lastLabel;
+    continueCard.classList.remove('hidden');
+  } else {
+    continueCard.classList.add('hidden');
+  }
+
+  const modsEl = document.getElementById('dash-modules');
+  modsEl.innerHTML = '';
+  MODULOS_DASH.forEach(m => {
+    const count = getStudiedCount(m.tipo);
+    const mpct = m.total > 0 ? Math.round((count / m.total) * 100) : 0;
+    const due = getDueKeys(m.tipo).length;
+    const card = document.createElement('div');
+    card.className = 'dash-mod-card';
+    card.style.setProperty('--mod-color', m.color);
+    card.innerHTML = '<div class="dash-mod-head"><span class="dash-mod-icon">' + m.icon + '</span><span class="dash-mod-name">' + m.label + '</span>' + (due > 0 ? '<span class="dash-mod-due">' + due + ' p/ revisar</span>' : '') + '</div>' +
+      '<div class="progress-track"><div class="progress-fill" style="width:' + mpct + '%;background:' + m.color + '"></div></div>' +
+      '<div class="dash-mod-count">' + count + '/' + m.total + ' estudados</div>';
+    card.onclick = () => switchTab(m.tipo);
+    modsEl.appendChild(card);
+  });
+
+  const dueItems = [];
+  MODULOS_DASH.forEach(m => {
+    getDueKeys(m.tipo).forEach(k => {
+      const label = getItemLabel(m.tipo, k);
+      if (label) dueItems.push({ tipo: m.tipo, key: k, label: label, modLabel: m.label, icon: m.icon });
+    });
+  });
+  const reviewSection = document.getElementById('dash-review-section');
+  const listEl = document.getElementById('dash-review-list');
+  if (dueItems.length > 0) {
+    reviewSection.classList.remove('hidden');
+    listEl.innerHTML = '';
+    dueItems.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'dash-review-item';
+      row.innerHTML = '<span class="dash-review-icon">' + item.icon + '</span><div><div class="dash-review-title">' + item.label + '</div><div class="dash-review-mod">' + item.modLabel + '</div></div>';
+      row.onclick = () => abrirItemDashboard(item.tipo, item.key);
+      listEl.appendChild(row);
+    });
+  } else {
+    reviewSection.classList.add('hidden');
+    listEl.innerHTML = '';
+  }
 }
 
 loadLidos('emagrecimento');
@@ -956,6 +1126,7 @@ updateTrilhaProgress('biomecanica');
 document.getElementById('emagrecimento-search').addEventListener('input', (e) => renderTrilhaList('emagrecimento', e.target.value));
 document.getElementById('biomecanica-search').addEventListener('input', (e) => renderTrilhaList('biomecanica', e.target.value));
 atualizarBadgesRevisao();
+renderDashboard();
 
 // ===== PROFESSOR (compartilhado) =====
 const PROF_SYSTEM_SHORT = "Aja como um professor especialista em biomecânica, cinesiologia, fisiologia do exercício e emagrecimento feminino, me ensinando de forma socrática: não entregue a resposta pronta de cara, faça uma ou duas perguntas guia antes de explicar. Se eu pedir a resposta direta, aí sim explique, e depois teste meu entendimento com 1-2 perguntas.";
@@ -1076,6 +1247,7 @@ function importarBackup(event) {
       updateTrilhaProgress('emagrecimento');
       updateTrilhaProgress('biomecanica');
       atualizarBadgesRevisao();
+      renderDashboard();
       setTimeout(fecharBackupModal, 1800);
     } catch (err) {
       setBackupStatus('Erro ao importar: ' + err.message, true);
