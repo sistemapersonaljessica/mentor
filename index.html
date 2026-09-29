@@ -19,7 +19,7 @@
     --pink: #F5518C; --pinkdim: #33131f;
     --blue: #4FC3F7; --bluedim: #0d2733;
     --violet: #8B7FD9; --violetdim: #221c3d;
-    --greenl: #4CAF50;
+    --yellow: #F5C518; --green: #2E7D32; --greenl: #4CAF50; --red: #C62828; --redl: #EF5350;
     --text: #e8e8e8; --muted: #888;
   }
   html, body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; min-height: 100vh; }
@@ -315,6 +315,40 @@
   .quiz-question { font-size: 16px; font-weight: 700; color: #fff; line-height: 1.5; }
   .quiz-answer { min-height: 110px; }
   .quiz-feedback { font-size: 13px; font-weight: 700; color: #ddd; margin-bottom: 14px; padding: 10px 14px; background: var(--card); border-radius: 8px; border: 1px solid var(--border); }
+  /* Ilustrações (SVG embutido) */
+  .fig { margin: 14px 0 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 10px 10px; }
+  .fig svg { width: 100%; height: auto; display: block; }
+  .fig figcaption { font-size: 11.5px; color: var(--muted); line-height: 1.55; margin-top: 10px; padding: 0 4px; }
+  .fig .l { stroke: #c8c8c8; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+  .fig .l.g { stroke: #4a4a4a; }
+  .fig .l.a { stroke: var(--accent); }
+  .fig .l.z { stroke: #777; stroke-width: 2.5; }
+  .fig .dd { stroke-dasharray: 5 5; stroke-width: 2; }
+  .fig .ld { stroke: #555; stroke-width: 1; stroke-dasharray: 2 3; fill: none; }
+  .fig .hd { fill: var(--surface); stroke: #c8c8c8; stroke-width: 3; }
+  .fig .jt { fill: var(--surface); stroke: var(--accent); stroke-width: 2.5; }
+  .fig .eq { fill: #666; stroke: #999; stroke-width: 1.5; }
+  .fig .bd { fill: #cfc8bd; stroke: #141414; stroke-width: 1.2; }
+  .fig .bd2 { fill: #5d5953; stroke: #141414; stroke-width: 1.2; }
+  .fig .fantasma { opacity: 0.45; }
+  .fig .mu { fill: var(--accent); fill-opacity: 0.85; }
+  .fig .mu2 { fill: #7a6f66; fill-opacity: 0.9; }
+  .fig .pt { fill: none; stroke: #999; stroke-width: 4; }
+  .fig .bx { fill: #222; stroke: #444; stroke-width: 1.5; }
+  .fig .m { stroke: var(--accent); stroke-opacity: 0.45; stroke-width: 11; stroke-linecap: round; fill: none; }
+  .fig .m2 { stroke: #777; stroke-opacity: 0.45; stroke-width: 11; stroke-linecap: round; fill: none; }
+  .fig .me { fill: var(--accent); fill-opacity: 0.45; }
+  .fig .pl { fill: var(--accent); fill-opacity: 0.16; stroke: var(--accent); stroke-width: 1.2; }
+  .fig .fa { fill: var(--accent); }
+  .fig .ac { stroke: var(--accent); stroke-width: 2; }
+  .fig .my { stroke: #e8e8e8; stroke-width: 4; stroke-linecap: round; }
+  .fig .c1 { stroke: #F5C518; } .fig .c2 { stroke: #8B7FD9; } .fig .c3 { stroke: #888; }
+  .fig text { font-family: inherit; }
+  .fig .t, .fig .tt { fill: #ddd; font-size: 14px; }
+  .fig .tt { font-weight: 700; }
+  .fig .tm { fill: #999; font-size: 12px; }
+  .fig .ta { fill: var(--accent); font-size: 13px; font-weight: 700; }
+  .fig .tc1 { fill: #F5C518; font-size: 12px; font-weight: 700; } .fig .tc2 { fill: #8B7FD9; font-size: 12px; font-weight: 700; } .fig .tc3 { fill: #999; font-size: 12px; font-weight: 700; }
 </style>
 <style>
   /* respiro para notch / barra inferior quando instalado em tela cheia */
@@ -597,6 +631,7 @@ function showGuiaDetail(key) {
   html2 += '<button class="study-btn" onclick="estudarExercicio(\'' + key + '\')">🎓 Estudar este exercicio com o Professor</button>';
   html2 += '<div class="sec-title"><span>Sobre</span><div class="line"></div></div>';
   html2 += '<div class="card-box"><p>' + e.sobre + '</p></div>';
+  html2 += renderIlustracao('guia:' + key);
   html2 += '<div class="sec-title"><span>Posicao Inicial</span><div class="line"></div></div>';
   e.posicao.forEach((p, i) => {
     html2 += '<div class="step-item"><div class="step-num">' + (i + 1) + '</div><div class="step-text"><strong>' + p.t + ':</strong> ' + p.d + '</div></div>';
@@ -998,6 +1033,246 @@ function renderTrilhaList(trilhaKey, filter) {
   });
   container.appendChild(listDiv);
 }
+// ===== ILUSTRAÇÕES =====
+// Desenhos em SVG embutido (sem arquivos externos): funcionam offline e no artifact.
+// Chaves: 'guia:<exercicio>' (depois de "Sobre") ou '<trilha>:<topico>:<subtítulo>' (depois daquele sub-bloco).
+function figSvg(w, h, body) {
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '" xmlns="http://www.w3.org/2000/svg" role="img">' + body + '</svg>';
+}
+function figTxt(x, y, s, cls, anchor) {
+  return '<text x="' + x + '" y="' + y + '" class="' + (cls || 't') + '"' + (anchor ? ' text-anchor="' + anchor + '"' : '') + '>' + s + '</text>';
+}
+function figLine(a, b, cls) {
+  return '<line x1="' + a[0] + '" y1="' + a[1] + '" x2="' + b[0] + '" y2="' + b[1] + '" class="' + (cls || 'l') + '"/>';
+}
+function figPath(pts, cls) {
+  return '<polyline points="' + pts.map(p => p.join(',')).join(' ') + '" class="' + (cls || 'l') + '"/>';
+}
+// Segmento do corpo com volume: cápsula que afina de a (raio ra) para b (raio rb).
+function figCap(a, b, ra, rb, cls) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len, ny = dx / len;
+  const P = (p, r, sg) => (p[0] + sg * nx * r).toFixed(1) + ',' + (p[1] + sg * ny * r).toFixed(1);
+  return '<path d="M' + P(a, ra, 1) + ' L' + P(b, rb, 1) + ' A' + rb + ',' + rb + ' 0 0 0 ' + P(b, rb, -1) +
+    ' L' + P(a, ra, -1) + ' A' + ra + ',' + ra + ' 0 0 0 ' + P(a, ra, 1) + 'Z" class="' + cls + '"/>';
+}
+// Corpo de perfil (manequim). p = {h,s,e,w,q,k,t,f} (cabeça, ombro, cotovelo, punho, quadril, joelho, tornozelo, ponta do pé)
+// e opcionalmente k2,t2,f2 / e2,w2 para o membro do outro lado (desenhado mais escuro).
+// hl = músculos em destaque, pintados por cima: {seg:[a,b]} ou {el:[x,y,rx,ry]}.
+function figBoneco(p, hl) {
+  let s = '';
+  if (p.k2) s += figCap(p.q, p.k2, 9, 6, 'bd2') + figCap(p.k2, p.t2, 6, 4, 'bd2') + figCap(p.t2, p.f2, 4, 3, 'bd2');
+  if (p.e2) s += figCap(p.s, p.e2, 6, 5, 'bd2') + figCap(p.e2, p.w2, 5, 4, 'bd2');
+  s += figCap(p.s, p.h, 5, 5, 'bd');
+  s += figCap(p.s, p.q, 14, 13, 'bd');
+  s += figCap(p.q, p.k, 10, 6.5, 'bd') + figCap(p.k, p.t, 6.5, 4, 'bd') + figCap(p.t, p.f, 4, 3, 'bd');
+  s += '<circle cx="' + p.h[0] + '" cy="' + p.h[1] + '" r="11" class="bd"/>';
+  (hl || []).forEach(m => {
+    if (m.seg) s += figCap(m.seg[0], m.seg[1], 5.5, 3.5, 'mu');
+    if (m.el) s += '<ellipse cx="' + m.el[0] + '" cy="' + m.el[1] + '" rx="' + m.el[2] + '" ry="' + m.el[3] + '" class="mu"/>';
+  });
+  s += figCap(p.s, p.e, 6.5, 5, 'bd') + figCap(p.e, p.w, 5, 4, 'bd');
+  return s;
+}
+// Corpo de frente (manequim), centrado em cx.
+function figCorpoFrente(cx) {
+  let s = '';
+  [-1, 1].forEach(l => {
+    s += figCap([cx + l * 8, 108], [cx + l * 10, 146], 8.5, 6, 'bd') + figCap([cx + l * 10, 146], [cx + l * 11, 180], 6, 4, 'bd');
+    s += figCap([cx + l * 19, 58], [cx + l * 23, 86], 6, 4.5, 'bd') + figCap([cx + l * 23, 86], [cx + l * 25, 110], 4.5, 3.5, 'bd');
+  });
+  s += '<path d="M' + (cx - 20) + ',52 Q' + cx + ',46 ' + (cx + 20) + ',52 L' + (cx + 13) + ',90 Q' + (cx + 17) + ',104 ' + (cx + 16) + ',114 L' + (cx - 16) + ',114 Q' + (cx - 17) + ',104 ' + (cx - 13) + ',90 Z" class="bd"/>';
+  s += figCap([cx, 50], [cx, 38], 5, 5, 'bd') + '<circle cx="' + cx + '" cy="34" r="11" class="bd"/>';
+  return s;
+}
+function figHalter(x, y) {
+  return '<rect x="' + (x - 9) + '" y="' + (y - 4) + '" width="18" height="8" rx="2" class="eq"/>';
+}
+function figRotulo(x, y, lx, ly, txt, anchor) {
+  return figLine([x, y], [lx, ly], 'ld') + figTxt(lx + (anchor === 'end' ? -3 : 3), ly + 4, txt, 'ta', anchor);
+}
+
+const ILUSTRACOES = {
+  // ---------- BIOMECÂNICA ----------
+  'biomecanica:planos-eixos-movimento:Plano Transverso': function () {
+    const corpo = figCorpoFrente;
+    let b = '';
+    // Sagital: plano vertical de frente para trás, pela linha média
+    b += '<polygon points="96,34 124,14 124,166 96,186" class="pl"/>' + corpo(100);
+    b += figTxt(100, 206, 'Sagital', 'tt', 'middle') + figTxt(100, 222, 'esquerda | direita', 'tm', 'middle');
+    b += figTxt(100, 237, 'flexão e extensão', 'tm', 'middle');
+    // Frontal: plano vertical de lado a lado
+    b += corpo(260) + '<polygon points="222,24 298,24 298,184 222,184" class="pl"/>';
+    b += figTxt(260, 206, 'Frontal', 'tt', 'middle') + figTxt(260, 222, 'frente | trás', 'tm', 'middle');
+    b += figTxt(260, 237, 'abdução e adução', 'tm', 'middle');
+    // Transverso: plano horizontal na cintura
+    b += corpo(420) + '<polygon points="378,114 448,114 468,96 398,96" class="pl"/>';
+    b += '<path d="M396,130 A30,9 0 0,0 446,130" class="l a"/><polygon points="446,130 438,124 437,134" class="fa"/>';
+    b += figTxt(420, 206, 'Transverso', 'tt', 'middle') + figTxt(420, 222, 'cima | baixo', 'tm', 'middle');
+    b += figTxt(420, 237, 'rotações', 'tm', 'middle');
+    return {
+      svg: figSvg(520, 250, b),
+      legenda: 'Os três planos lado a lado. Cada plano divide o corpo em duas metades, e o movimento acontece "dentro" dele. O eixo de rotação é sempre perpendicular ao plano: látero-lateral (sagital), ântero-posterior (frontal) e longitudinal (transverso).'
+    };
+  },
+  'biomecanica:torque-braco-momento:Braço de momento (braço de alavanca)': function () {
+    function painel(ox, ang, titulo, sub) {
+      const cx = ox + 40, cy = 62, L = 110, my = 196;
+      const r = ang * Math.PI / 180;
+      const wx = Math.round(cx + L * Math.cos(r)), wy = Math.round(cy + L * Math.sin(r));
+      let b = '';
+      b += figCap([cx, cy - 58], [cx, cy], 9, 7, 'bd2'); // braço, vertical
+      b += figCap([cx, cy], [wx, wy], 7, 5, 'bd');        // antebraço
+      b += '<circle cx="' + cx + '" cy="' + cy + '" r="6" class="jt"/>';
+      b += figHalter(wx, wy);
+      b += figLine([wx, wy + 6], [wx, wy + 34], 'l a') + '<polygon points="' + (wx - 5) + ',' + (wy + 30) + ' ' + (wx + 5) + ',' + (wy + 30) + ' ' + wx + ',' + (wy + 40) + '" class="fa"/>';
+      b += figTxt(wx + 9, wy + 30, 'peso', 'ta');
+      b += figLine([cx, my], [wx, my], 'l a dd') + figLine([cx, my - 6], [cx, my + 6], 'l a') + figLine([wx, my - 6], [wx, my + 6], 'l a');
+      b += figLine([cx, cy + 6], [cx, my - 6], 'ld') + figLine([wx, wy + 40], [wx, my - 6], 'ld');
+      b += figTxt((cx + wx) / 2, my + 18, 'braço de momento', 'ta', 'middle');
+      b += figTxt(cx - 10, cy + 4, 'eixo', 'tm', 'end');
+      b += figTxt(ox + 100, 246, titulo, 'tt', 'middle') + figTxt(ox + 100, 262, sub, 'tm', 'middle');
+      return b;
+    }
+    const b = painel(20, 0, 'Antebraço na horizontal', 'braço de momento máximo = torque máximo') +
+      painel(280, 50, 'Antebraço mais estendido', 'braço de momento menor = torque menor');
+    return {
+      svg: figSvg(520, 272, b),
+      legenda: 'Mesmo halter, mesmo peso, torque diferente. Torque = força × braço de momento, e o braço de momento é a distância na horizontal entre o eixo (cotovelo) e a linha em que o peso "puxa" (para baixo, pela gravidade).'
+    };
+  },
+  'biomecanica:curva-resistencia:Curva em sino (mais difícil no meio)': function () {
+    const x0 = 60, x1 = 480, y0 = 190, y1 = 30;
+    let b = '';
+    b += figLine([x0, y1 - 10], [x0, y0], 'l g') + figLine([x0, y0], [x1 + 10, y0], 'l g');
+    b += figTxt(x0 - 8, y1 + 4, 'difícil', 'tm', 'end') + figTxt(x0 - 8, y0 - 2, 'fácil', 'tm', 'end');
+    b += figTxt(x0, y0 + 20, 'início da amplitude', 'tm') + figTxt(x1, y0 + 20, 'fim', 'tm', 'end');
+    b += '<path d="M' + x0 + ',170 C 200,165 360,110 ' + x1 + ',45" class="l c1"/>';
+    b += '<path d="M' + x0 + ',45 C 180,110 340,165 ' + x1 + ',170" class="l c2"/>';
+    b += '<path d="M' + x0 + ',175 C 180,20 360,20 ' + x1 + ',175" class="l a"/>';
+    b += figLine([x0, 118], [x1, 118], 'l c3 dd');
+    b += figTxt(x1 - 4, 38, 'ascendente', 'tc1', 'end');
+    b += figTxt(x0 + 8, 38, 'descendente', 'tc2');
+    b += figTxt(270, 50, 'em sino', 'ta', 'middle');
+    b += figLine([196, 206], [222, 206], 'l c3 dd') + figTxt(228, 210, 'polia: mais constante', 'tc3');
+    return {
+      svg: figSvg(520, 222, b),
+      legenda: 'Formas típicas de curva de resistência. O ponto mais alto de cada curva é onde o exercício "pesa" mais. No peso livre, esse ponto coincide com o braço de momento máximo; na polia, a curva tende a ser mais achatada.'
+    };
+  },
+  'biomecanica:relacao-comprimento-tensao:O princípio fisiológico': function () {
+    let b = '';
+    // curva em U invertido
+    b += figLine([50, 20], [50, 150], 'l g') + figLine([50, 150], [490, 150], 'l g');
+    b += figTxt(42, 30, 'força', 'tm', 'end') + figTxt(490, 168, 'comprimento do músculo', 'tm', 'end');
+    b += '<path d="M70,140 C 150,135 200,40 270,38 C 340,40 390,135 470,140" class="l a"/>';
+    const pontos = [[110, 125, 'encurtado'], [270, 38, 'ótimo'], [430, 125, 'alongado']];
+    pontos.forEach(p => { b += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="5" class="fa"/>'; });
+    // sarcômeros
+    function sarc(cx, meio, sobre) { // meio = meia-largura do sarcômero; sobre = comprimento da actina a partir de cada linha Z
+      const y = 205;
+      let s = '';
+      s += figLine([cx - meio, y - 22], [cx - meio, y + 22], 'l z') + figLine([cx + meio, y - 22], [cx + meio, y + 22], 'l z');
+      [-12, 0, 12].forEach(dy => {
+        s += figLine([cx - meio, y + dy], [cx - meio + sobre, y + dy], 'ac');
+        s += figLine([cx + meio, y + dy], [cx + meio - sobre, y + dy], 'ac');
+      });
+      [-6, 6].forEach(dy => { s += figLine([cx - 28, y + dy], [cx + 28, y + dy], 'my'); });
+      return s;
+    }
+    b += sarc(110, 36, 34) + sarc(270, 52, 30) + sarc(430, 72, 22);
+    pontos.forEach(p => { b += figTxt(p[0], 250, p[2], 'tt', 'middle'); });
+    b += figTxt(110, 266, 'filamentos se atropelam', 'tm', 'middle');
+    b += figTxt(270, 266, 'sobreposição ideal', 'tm', 'middle');
+    b += figTxt(430, 266, 'pouca sobreposição', 'tm', 'middle');
+    b += figLine([300, 290], [318, 290], 'ac') + figTxt(322, 294, 'actina', 'tm');
+    b += figLine([380, 290], [398, 290], 'my') + figTxt(402, 294, 'miosina', 'tm');
+    return {
+      svg: figSvg(520, 302, b),
+      legenda: 'Em cima, a força máxima em cada comprimento. Embaixo, o que acontece dentro do sarcômero: a força é maior quando actina e miosina se sobrepõem na medida certa.'
+    };
+  },
+  'biomecanica:agonistas-sinergistas-estabilizadores:Antagonista: o músculo do lado oposto': function () {
+    const q = [100, 112], k = [250, 112], L = 104;
+    const pe = ang => { const r = ang * Math.PI / 180; return [Math.round(k[0] + L * Math.sin(r)), Math.round(k[1] + L * Math.cos(r))]; };
+    const t0 = pe(0), t1 = pe(60);
+    let b = '';
+    b += '<rect x="56" y="30" width="12" height="100" rx="3" class="bx"/><rect x="56" y="126" width="196" height="12" rx="3" class="bx"/>';
+    b += figCap(k, t0, 13, 8, 'bd2 fantasma') + figCap(t0, [t0[0] + 22, t0[1] + 2], 7, 5, 'bd2 fantasma');
+    b += figCap(q, [q[0] - 12, 36], 20, 17, 'bd') + '<circle cx="' + (q[0] - 14) + '" cy="16" r="14" class="bd"/>';
+    b += figCap(q, k, 20, 13, 'bd') + figCap(k, t1, 13, 8, 'bd') + figCap(t1, [t1[0] + 16, t1[1] - 14], 7, 5, 'bd');
+    b += figCap([112, 101], [238, 104], 9, 6, 'mu');
+    b += figCap([112, 124], [236, 121], 8, 5, 'mu2');
+    b += '<circle cx="' + k[0] + '" cy="' + k[1] + '" r="6" class="jt"/>';
+    b += '<path d="M262,208 A96,96 0 0,0 322,178" class="l a"/><polygon points="326,174 314,176 322,186" class="fa"/>';
+    b += figTxt(336, 206, 'extensão do joelho', 'tt');
+    b += figRotulo(175, 88, 300, 54, 'agonista: quadríceps (contrai)', 'start');
+    b += figRotulo(150, 128, 24, 180, 'antagonista: isquiotibiais (relaxa)', 'start');
+    return {
+      svg: figSvg(520, 226, b),
+      legenda: 'Na cadeira extensora, o quadríceps (na frente da coxa) produz o movimento, enquanto os isquiotibiais (atrás) precisam relaxar de forma coordenada para o joelho estender.'
+    };
+  },
+
+  // ---------- EXERCÍCIOS (amostra) ----------
+  'guia:agachamento-livre': function () {
+    const inicio = { h: [76, 40], s: [74, 58], e: [62, 76], w: [68, 58], q: [74, 112], k: [76, 154], t: [75, 196], f: [92, 198] };
+    const fundo = { h: [92, 98], s: [85, 114], e: [73, 128], w: [80, 112], q: [62, 164], k: [104, 164], t: [75, 196], f: [92, 198] };
+    let b = '<line x1="10" y1="200" x2="410" y2="200" class="l g"/>';
+    b += '<g>' + figBoneco(inicio, [{ seg: [[78, 114], [80, 152]] }, { el: [68, 114, 8, 10] }]) + '<circle cx="68" cy="66" r="11" class="pt"/></g>';
+    b += '<g transform="translate(180,0)">' + figBoneco(fundo, [{ seg: [[64, 158], [100, 158]] }, { el: [58, 166, 9, 8] }]) + '<circle cx="80" cy="121" r="11" class="pt"/>';
+    b += figLine([80, 132], [80, 200], 'ld') + '</g>';
+    b += figTxt(80, 222, 'Início', 'tt', 'middle') + figTxt(265, 222, 'Fundo', 'tt', 'middle');
+    b += figRotulo(290, 158, 336, 120, 'quadríceps', 'start') + figRotulo(230, 170, 190, 186, 'glúteo', 'end');
+    b += figTxt(265, 238, 'barra alinhada com o meio do pé', 'tm', 'middle');
+    return {
+      svg: figSvg(420, 246, b),
+      legenda: 'Quadril e joelho flexionam juntos, a barra desce na linha do meio do pé e os joelhos seguem a direção da ponta dos pés.'
+    };
+  },
+  'guia:rosca-direta': function () {
+    const base = { h: [76, 34], s: [74, 52], q: [74, 112], k: [76, 154], t: [75, 196], f: [92, 198] };
+    const poses = [
+      [80, 'Início', Object.assign({ e: [76, 98], w: [78, 142] }, base)],
+      [215, 'Meio (mais difícil)', Object.assign({ e: [76, 98], w: [120, 98] }, base)],
+      [350, 'Topo', Object.assign({ e: [76, 98], w: [100, 62] }, base)]
+    ];
+    let b = '<line x1="10" y1="200" x2="470" y2="200" class="l g"/>';
+    poses.forEach((p, i) => {
+      b += '<g transform="translate(' + (p[0] - 80) + ',0)">' + figBoneco(p[2], [{ seg: [[80, 56], [80, 94]] }]) + figHalter(p[2].w[0], p[2].w[1]);
+      if (i === 1) b += figLine([76, 112], [120, 112], 'l a dd') + figTxt(84, 128, 'braço de', 'tm') + figTxt(84, 141, 'momento', 'tm');
+      b += '</g>' + figTxt(p[0] + 5, 222, p[1], 'tt', 'middle');
+    });
+    b += figRotulo(84, 72, 130, 40, 'bíceps', 'start');
+    b += figTxt(240, 240, 'cotovelo parado ao lado do tronco nas três fases', 'tm', 'middle');
+    return {
+      svg: figSvg(480, 248, b),
+      legenda: 'Só o antebraço se move. Com o antebraço na horizontal, o halter fica mais longe do cotovelo (maior braço de momento), por isso é o ponto mais pesado da rosca.'
+    };
+  },
+  'guia:step-up': function () {
+    const inicio = { h: [73, 46], s: [70, 62], e: [72, 90], w: [76, 114], q: [60, 118], k: [99, 116], t: [100, 154], f: [116, 156], k2: [57, 158], t2: [55, 196], f2: [70, 198] };
+    const topo = { h: [102, 12], s: [100, 30], e: [101, 58], w: [104, 84], q: [100, 74], k: [101, 114], t: [100, 154], f: [116, 156], k2: [95, 112], t2: [82, 146], f2: [92, 150] };
+    let b = '<line x1="10" y1="200" x2="410" y2="200" class="l g"/>';
+    const caixa = ox => '<rect x="' + (ox + 82) + '" y="158" width="60" height="42" rx="3" class="bx"/>';
+    b += caixa(0) + '<g>' + figBoneco(inicio, [{ seg: [[62, 112], [96, 110]] }, { el: [56, 118, 8, 9] }]) + '</g>';
+    b += caixa(210) + '<g transform="translate(210,0)">' + figBoneco(topo, [{ seg: [[104, 78], [105, 112]] }, { el: [94, 76, 8, 10] }]) + '</g>';
+    b += figTxt(85, 222, 'Início: pé inteiro no banco', 'tt', 'middle') + figTxt(305, 222, 'Topo: quadril estendido', 'tt', 'middle');
+    b += figRotulo(304, 76, 350, 50, 'glúteo', 'start') + figRotulo(315, 96, 350, 90, 'quadríceps', 'start');
+    return {
+      svg: figSvg(420, 232, b),
+      legenda: 'O impulso vem da perna de cima, empurrando pelo calcanhar. A perna de trás só acompanha.'
+    };
+  }
+};
+
+function renderIlustracao(chave) {
+  const fn = ILUSTRACOES[chave];
+  if (!fn) return '';
+  const fig = fn();
+  return '<figure class="fig">' + fig.svg + '<figcaption>' + fig.legenda + '</figcaption></figure>';
+}
+
 function showTrilhaDetail(trilhaKey, key) {
   const data = TRILHA_CONFIG[trilhaKey].data;
   const t = data[key];
@@ -1014,7 +1289,7 @@ function showTrilhaDetail(trilhaKey, key) {
   let html = '<button class="back-btn" onclick="backToTrilhaList(\'' + trilhaKey + '\')">&larr; Voltar para trilha</button>';
   html += '<div class="title-bar"><div class="modtag">Módulo ' + t.modulo + ' &middot; ' + t.categoria + ' &middot; Tópico ' + t.ordem + '/' + total + '</div><div class="titulo">' + t.titulo + '</div><div class="resumo">' + t.resumo + '</div></div>';
   html += '<button class="study-btn" onclick="estudarTopico(\'' + trilhaKey + '\',\'' + key + '\')">🎓 Estudar este tópico com o Professor</button>';
-  t.conteudo.forEach(c => { html += '<div class="sub-block"><div class="sub-title">' + c.sub + '</div><div class="sub-text">' + c.texto + '</div></div>'; });
+  t.conteudo.forEach(c => { html += '<div class="sub-block"><div class="sub-title">' + c.sub + '</div><div class="sub-text">' + c.texto + '</div></div>' + renderIlustracao(trilhaKey + ':' + key + ':' + c.sub); });
   html += '<div class="pratica-box"><div class="pratica-title">Aplicação Prática</div>';
   t.aplicacao_pratica.forEach(p => { html += '<div class="pratica-item"><span class="ic">&rarr;</span>' + p + '</div>'; });
   html += '</div>';
