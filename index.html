@@ -333,6 +333,7 @@
   .fig .fantasma { opacity: 0.45; }
   .fig .mu { fill: var(--accent); fill-opacity: 0.85; }
   .fig .mu2 { fill: #7a6f66; fill-opacity: 0.9; }
+  .fig .cabo { stroke: #777; stroke-width: 1.5; }
   .fig .pt { fill: none; stroke: #999; stroke-width: 4; }
   .fig .bx { fill: #222; stroke: #444; stroke-width: 1.5; }
   .fig .m { stroke: var(--accent); stroke-opacity: 0.45; stroke-width: 11; stroke-linecap: round; fill: none; }
@@ -1268,9 +1269,334 @@ const ILUSTRACOES = {
 
 function renderIlustracao(chave) {
   const fn = ILUSTRACOES[chave];
-  if (!fn) return '';
-  const fig = fn();
+  const fig = fn ? fn() : (chave.indexOf('guia:') === 0 ? ilustracaoPose(chave.slice(5)) : null);
+  if (!fig) return '';
   return '<figure class="fig">' + fig.svg + '<figcaption>' + fig.legenda + '</figcaption></figure>';
+}
+
+// ===== ILUSTRAÇÕES GERADAS POR POSE =====
+// Cada exercício = 2 poses (início/fim) descritas por ângulos, músculos tirados dos "primários" e alguns equipamentos.
+// Perfil (lado 'p'): ângulos em graus. t = tronco a partir da vertical pra cima (+ inclina pra frente);
+// c/p = coxa/perna a partir da vertical pra baixo (+ pra frente); b/a = braço/antebraço idem; f = pé (90 = apontando pra frente).
+// c2,p2,b2,a2,f2 = membros do outro lado (se omitidos, iguais). r = rotação do corpo inteiro (-90 = deitado de barriga pra cima, 90 = de bruços).
+// Frente (lado 'f'): b/a = braço/antebraço abrindo pra fora; c/p = coxa/perna abrindo pra fora.
+const POSE_L = { T: 54, C: 44, P: 42, F: 15, B: 38, A: 34 };
+function pvec(ang, len, up) { const r = ang * Math.PI / 180; return [Math.sin(r) * len, (up ? -1 : 1) * Math.cos(r) * len]; }
+function padd(p, v) { return [p[0] + v[0], p[1] + v[1]]; }
+function pmix(a, b, k) { return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]; }
+
+function poseJuntas(o) {
+  const L = POSE_L, J = {};
+  J.q = [0, 0];
+  J.s = padd(J.q, pvec(o.t || 0, L.T, true));
+  J.h = padd(J.s, pvec(o.t || 0, 19, true));
+  [['', o.c, o.p, o.b, o.a, o.f], ['2', o.c2, o.p2, o.b2, o.a2, o.f2]].forEach(([n, c, p, b, a, f]) => {
+    c = c === undefined ? o.c || 0 : c; p = p === undefined ? o.p || 0 : p;
+    b = b === undefined ? o.b || 0 : b; a = a === undefined ? o.a || 0 : a;
+    f = f === undefined ? (o.f === undefined ? 90 : o.f) : f;
+    J['k' + n] = padd(J.q, pvec(c, L.C));
+    J['t' + n] = padd(J['k' + n], pvec(p, L.P));
+    J['f' + n] = padd(J['t' + n], pvec(p + f, L.F));
+    J['e' + n] = padd(J.s, pvec(b, L.B));
+    J['w' + n] = padd(J['e' + n], pvec(a, L.A));
+  });
+  if (o.r) {
+    const r = o.r * Math.PI / 180, cs = Math.cos(r), sn = Math.sin(r);
+    Object.keys(J).forEach(k => { const [x, y] = J[k]; J[k] = [x * cs - y * sn, x * sn + y * cs]; });
+  }
+  return J;
+}
+function poseJuntasFrente(o) {
+  const J = {}, sm = [-1, 1];
+  J.h = [0, -84]; J.pesc = [0, -70];
+  sm.forEach(l => {
+    const n = l < 0 ? 'E' : 'D', sg = [l * 18, o.encolhe ? -71 : -64], hp = [l * 8, 0];
+    J['s' + n] = sg; J['q' + n] = hp;
+    const b = o['b' + n] !== undefined ? o['b' + n] : o.b || 0, a = o['a' + n] !== undefined ? o['a' + n] : (o.a !== undefined ? o.a : b);
+    const c = o['c' + n] !== undefined ? o['c' + n] : o.c || 0, p = o['p' + n] !== undefined ? o['p' + n] : (o.p !== undefined ? o.p : c);
+    J['e' + n] = padd(sg, [l * Math.sin(b * Math.PI / 180) * 36, Math.cos(b * Math.PI / 180) * 36 * (o.encurta || 1)]);
+    J['w' + n] = padd(J['e' + n], [l * Math.sin(a * Math.PI / 180) * 32, Math.cos(a * Math.PI / 180) * 32 * (o.encurta || 1)]);
+    if (o.sentado) { // coxa vem na direção de quem olha (encurtada); c = afastamento do joelho em px
+      J['k' + n] = padd(hp, [l * (4 + c), 14]);
+      J['t' + n] = padd(J['k' + n], [l * 2, 42]);
+    } else {
+      J['k' + n] = padd(hp, [l * Math.sin(c * Math.PI / 180) * 44, Math.cos(c * Math.PI / 180) * 44]);
+      J['t' + n] = padd(J['k' + n], [l * Math.sin(p * Math.PI / 180) * 42, Math.cos(p * Math.PI / 180) * 42]);
+    }
+  });
+  return J;
+}
+
+// Músculos: chave -> formas, a partir das juntas. 'fr' = lado da frente do segmento.
+function poseFrente(a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [dy / l, -dx / l]; }
+function poseFaixa(a, b, k0, k1, lado, off, ra, rb) {
+  const n = poseFrente(a, b), A = pmix(a, b, k0), B = pmix(a, b, k1);
+  return figCap(padd(A, [n[0] * off * lado, n[1] * off * lado]), padd(B, [n[0] * off * lado, n[1] * off * lado]), ra, rb, 'mu');
+}
+function poseMusculosPerfil(J, m) {
+  const tr = poseFrente(J.s, J.q); // aponta pra frente do tronco (de ombro pra quadril, "frente" = +)
+  const s = [];
+  const tronco = (k0, k1, lado, ra, rb) => poseFaixa(J.q, J.s, k0, k1, -lado, 8, ra, rb);
+  return {
+    tronco: [
+      m.peit && tronco(0.62, 0.9, 1, 7, 6),
+      m.abd && tronco(0.12, 0.55, 1, 6, 6),
+      m.obl && tronco(0.12, 0.5, 0, 9, 8),
+      m.lat && tronco(0.38, 0.82, -1, 7, 7),
+      m.trapM && tronco(0.72, 0.98, -1, 6, 5),
+      m.trapI && tronco(0.55, 0.85, -1, 5, 5),
+      m.lomb && tronco(0.05, 0.4, -1, 6, 6),
+      m.trapS && figCap(pmix(J.s, J.h, 0.1), pmix(J.s, J.h, 0.6), 6, 4, 'mu'),
+      m.glut && '<circle cx="' + (J.q[0] - tr[0] * 9).toFixed(1) + '" cy="' + (J.q[1] - tr[1] * 9).toFixed(1) + '" r="10" class="mu"/>',
+      m.glmed && '<circle cx="' + (J.q[0] - tr[0] * 3 + (J.s[0] - J.q[0]) * 0.12).toFixed(1) + '" cy="' + (J.q[1] - tr[1] * 3 + (J.s[1] - J.q[1]) * 0.12).toFixed(1) + '" r="8" class="mu"/>'
+    ],
+    perna: [
+      m.quad && poseFaixa(J.q, J.k, 0.12, 0.88, 1, 4, 6.5, 4),
+      m.isq && poseFaixa(J.q, J.k, 0.18, 0.9, -1, 4, 6, 4),
+      m.adut && poseFaixa(J.q, J.k, 0.1, 0.6, 0, 0, 6, 4),
+      m.pant && poseFaixa(J.k, J.t, 0.1, 0.6, -1, 2.5, 5, 3)
+    ],
+    braco: [
+      m.delA && figCap(J.s, pmix(J.s, J.e, 0.35), 7, 6, 'mu'),
+      m.delM && '<circle cx="' + J.s[0].toFixed(1) + '" cy="' + J.s[1].toFixed(1) + '" r="8" class="mu"/>',
+      m.delP && figCap(J.s, pmix(J.s, J.e, 0.3), 7, 6, 'mu'),
+      m.bic && poseFaixa(J.s, J.e, 0.25, 0.9, 1, 2.5, 4.5, 3.5),
+      m.tri && poseFaixa(J.s, J.e, 0.15, 0.9, -1, 2.5, 4.5, 3.5),
+      m.brr && poseFaixa(J.e, J.w, 0.05, 0.55, 1, 1.5, 4, 3)
+    ]
+  };
+}
+function poseCorpoPerfil(J, m) {
+  const M = poseMusculosPerfil(J, m), j = x => x.filter(Boolean).join('');
+  let s = '';
+  s += figCap(J.q, J.k2, 9, 6, 'bd2') + figCap(J.k2, J.t2, 6, 4, 'bd2') + figCap(J.t2, J.f2, 4, 3, 'bd2');
+  s += figCap(J.s, J.e2, 6, 5, 'bd2') + figCap(J.e2, J.w2, 5, 4, 'bd2');
+  s += figCap(J.s, J.h, 5, 5, 'bd') + figCap(J.s, J.q, 14, 13, 'bd');
+  s += '<circle cx="' + J.h[0].toFixed(1) + '" cy="' + J.h[1].toFixed(1) + '" r="11" class="bd"/>';
+  s += j(M.tronco);
+  s += figCap(J.q, J.k, 10, 6.5, 'bd') + figCap(J.k, J.t, 6.5, 4, 'bd') + figCap(J.t, J.f, 4, 3, 'bd');
+  s += j(M.perna);
+  s += figCap(J.s, J.e, 6.5, 5, 'bd') + figCap(J.e, J.w, 5, 4, 'bd');
+  s += j(M.braco);
+  return s;
+}
+function poseCorpoFrente(J, m) {
+  let s = '';
+  const lados = ['E', 'D'];
+  lados.forEach(n => {
+    s += figCap(J['q' + n], J['k' + n], 9, 6, 'bd') + figCap(J['k' + n], J['t' + n], 6, 4, 'bd');
+    if (m.quad) s += figCap(pmix(J['q' + n], J['k' + n], 0.15), pmix(J['q' + n], J['k' + n], 0.85), 6, 4, 'mu');
+    if (m.adut) { const l = n === 'E' ? 1 : -1; s += figCap(padd(pmix(J['q' + n], J['k' + n], 0.08), [l * 4, 0]), padd(pmix(J['q' + n], J['k' + n], 0.6), [l * 3, 0]), 5, 3, 'mu'); }
+  });
+  s += '<path d="M-20,' + (J.sE[1] - 2) + ' Q0,-72 20,' + (J.sD[1] - 2) + ' L13,-28 Q17,-14 16,4 L-16,4 Q-17,-14 -13,-28 Z" class="bd"/>';
+  if (m.costas) {
+    if (m.trapM || m.trapI || m.delP) s += '<path d="M0,-66 L-12,-54 L0,-34 L12,-54 Z" class="mu"/>';
+    if (m.trapI) s += '<path d="M-8,-50 L0,-26 L8,-50 L0,-40 Z" class="mu"/>';
+    if (m.lat) s += figCap([-13, -52], [-10, -22], 5, 3, 'mu') + figCap([13, -52], [10, -22], 5, 3, 'mu');
+  }
+  if (m.glmed || m.glut) s += '<ellipse cx="-15" cy="-4" rx="5" ry="9" class="mu"/><ellipse cx="15" cy="-4" rx="5" ry="9" class="mu"/>';
+  if (m.peit && !m.costas) s += '<path d="M-15,-60 Q0,-64 15,-60 L13,-46 Q0,-42 -13,-46 Z" class="mu"/>';
+  if (m.abd && !m.costas) s += figCap([0, -40], [0, -6], 6, 5, 'mu');
+  if (m.obl) s += figCap([-11, -36], [-12, -12], 4, 4, 'mu') + figCap([11, -36], [12, -12], 4, 4, 'mu');
+  s += figCap(J.pesc, [0, -76], 5, 5, 'bd') + '<circle cx="0" cy="-84" r="11" class="bd"/>';
+  if (m.trapS) s += '<path d="M-6,-72 L-17,-66 L-6,-64 Z M6,-72 L17,-66 L6,-64 Z" class="mu"/>';
+  lados.forEach(n => {
+    s += figCap(J['s' + n], J['e' + n], 6, 5, 'bd') + figCap(J['e' + n], J['w' + n], 5, 4, 'bd');
+    if (m.delM || m.delA || m.delP) s += '<circle cx="' + J['s' + n][0] + '" cy="' + J['s' + n][1] + '" r="7.5" class="mu"/>';
+  });
+  return s;
+}
+
+// Equipamentos: recebem as juntas finais e devolvem {svg, pts} (pts entram no enquadramento).
+const POSE_EQUIP = {
+  halter: J => ({ svg: figHalter(J.w[0], J.w[1]), pts: [J.w] }),
+  bancoOmbro: J => ({ svg: '<rect x="' + (J.s[0] - 22).toFixed(1) + '" y="' + (J.s[1] + 12).toFixed(1) + '" width="40" height="34" rx="3" class="bx"/>', pts: [padd(J.s, [-22, 12]), padd(J.s, [18, 46])] }),
+  assentoF: J => ({ svg: '<rect x="-28" y="6" width="56" height="10" rx="3" class="bx"/>', pts: [[-28, 6], [28, 16]] }),
+  halterF: J => ({ svg: figHalter(J.wE[0], J.wE[1]) + figHalter(J.wD[0], J.wD[1]), pts: [J.wE, J.wD] }),
+  barra: J => ({ svg: '<circle cx="' + J.w[0].toFixed(1) + '" cy="' + J.w[1].toFixed(1) + '" r="12" class="pt"/>', pts: [padd(J.w, [-12, -12]), padd(J.w, [12, 12])] }),
+  barraOmbro: J => { const c = padd(pmix(J.s, J.q, 0.12), pvec(0, 0)); return { svg: '<circle cx="' + c[0].toFixed(1) + '" cy="' + c[1].toFixed(1) + '" r="11" class="pt"/>', pts: [c] }; },
+  anilhaQuadril: J => ({ svg: '<circle cx="' + J.q[0].toFixed(1) + '" cy="' + (J.q[1] - 16).toFixed(1) + '" r="12" class="pt"/>', pts: [[J.q[0], J.q[1] - 28]] }),
+  banco: J => { // banco sob o tronco (deitado ou sentado)
+    const x0 = Math.min(J.s[0], J.q[0]) - 14, x1 = Math.max(J.s[0], J.q[0]) + 14, y = Math.max(J.s[1], J.q[1]) + 12;
+    return { svg: '<rect x="' + x0.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (x1 - x0).toFixed(1) + '" height="9" rx="3" class="bx"/><rect x="' + ((x0 + x1) / 2 - 4).toFixed(1) + '" y="' + (y + 9).toFixed(1) + '" width="8" height="26" class="bx"/>', pts: [[x0, y], [x1, y + 35]] };
+  },
+  bancoInclinado: J => { // encosto acompanhando o tronco, pelas costas
+    const n = poseFrente(J.s, J.q), off = 16, a = padd(pmix(J.q, J.s, -0.1), [n[0] * off, n[1] * off]), b = padd(pmix(J.q, J.s, 1.05), [n[0] * off, n[1] * off]);
+    return { svg: figCap(a, b, 6, 6, 'bx') + figCap(J.q, padd(J.q, [0, 14]), 0, 0, 'bx') + '<rect x="' + (J.q[0] - 10).toFixed(1) + '" y="' + (J.q[1] + 11).toFixed(1) + '" width="44" height="9" rx="3" class="bx"/>', pts: [a, b, padd(J.q, [34, 20])] };
+  },
+  assento: J => ({ svg: '<rect x="' + (J.q[0] - 16).toFixed(1) + '" y="' + (J.q[1] + 11).toFixed(1) + '" width="46" height="9" rx="3" class="bx"/><rect x="' + (J.q[0] - 2).toFixed(1) + '" y="' + (J.q[1] + 20).toFixed(1) + '" width="8" height="30" class="bx"/>', pts: [padd(J.q, [-16, 11]), padd(J.q, [30, 50])] }),
+  encosto: J => { const n = poseFrente(J.s, J.q), a = padd(J.q, [n[0] * 16, n[1] * 16]), b = padd(pmix(J.q, J.s, 1.05), [n[0] * 16, n[1] * 16]); return { svg: figCap(a, b, 6, 6, 'bx'), pts: [a, b] }; },
+  caixa: J => ({ svg: '<rect x="' + (J.t[0] - 20).toFixed(1) + '" y="' + (J.t[1] + 4).toFixed(1) + '" width="54" height="40" rx="3" class="bx"/>', pts: [padd(J.t, [-20, 4]), padd(J.t, [34, 44])] }),
+  bancoPeTras: J => ({ svg: '<rect x="' + (J.f2[0] - 30).toFixed(1) + '" y="' + (J.f2[1] + 3).toFixed(1) + '" width="46" height="40" rx="3" class="bx"/>', pts: [padd(J.f2, [-30, 3]), padd(J.f2, [16, 43])] }),
+  plataforma: J => { // placa de leg press nos pés
+    const n = poseFrente(J.t, J.f), c = pmix(J.t, J.f, 0.5), a = padd(c, [n[0] * 26 + (J.f[0] - J.t[0]) * 0.0, n[1] * 26]), b = padd(c, [-n[0] * 26, -n[1] * 26]);
+    return { svg: figCap(padd(a, [3, 0]), padd(b, [3, 0]), 4, 4, 'bx'), pts: [a, b] };
+  },
+  rolo: J => { const c = padd(J.t, [0, -2]); return { svg: '<circle cx="' + c[0].toFixed(1) + '" cy="' + c[1].toFixed(1) + '" r="8" class="eq"/>', pts: [c] }; },
+  roloCoxa: J => { const c = pmix(J.q, J.k, 0.85); return { svg: '<circle cx="' + c[0].toFixed(1) + '" cy="' + (c[1] - 11).toFixed(1) + '" r="7" class="eq"/>', pts: [c] }; },
+  apoioScott: J => { const n = poseFrente(J.s, J.e), a = padd(pmix(J.s, J.e, 0.25), [-n[0] * 9, -n[1] * 9]), b = padd(pmix(J.s, J.e, 1.1), [-n[0] * 9, -n[1] * 9]); return { svg: figCap(a, b, 5, 5, 'bx'), pts: [a, b] }; },
+  apoioMaos: J => ({ svg: '<rect x="' + (J.w[0] - 24).toFixed(1) + '" y="' + (J.w[1] + 4).toFixed(1) + '" width="48" height="36" rx="3" class="bx"/>', pts: [padd(J.w, [-24, 4]), padd(J.w, [24, 40])] }),
+  barraFixa: J => ({ svg: figCap(padd(J.w, [-18, 0]), padd(J.w, [18, 0]), 3, 3, 'eq'), pts: [J.w] })
+};
+function poseCabo(J, de, ponta) { // de = ponto da polia relativo ao quadril; ponta = junta onde o cabo prende
+  const p = padd(J.q, de), m = J[ponta || 'w'];
+  return { svg: figLine(p, m, 'cabo') + '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="6" class="eq"/>', pts: [p] };
+}
+
+// Mapeia os "primários" do exercício para as chaves de músculo.
+function poseMusculosDe(nomes) {
+  const m = {}, t = nomes.join(' | ').toLowerCase();
+  const R = [
+    [/quadr[ií]ceps/, 'quad'], [/gl[uú]teo m[aá]ximo/, 'glut'], [/gl[uú]teo m[eé]dio/, 'glmed'], [/adutor/, 'adut'],
+    [/isquio/, 'isq'], [/eretor/, 'lomb'], [/panturrilha|gastrocn|s[oó]leo/, 'pant'], [/peitoral/, 'peit'],
+    [/deltoide anterior/, 'delA'], [/deltoide (medial|lateral)/, 'delM'], [/deltoide posterior/, 'delP'],
+    [/tr[ií]ceps/, 'tri'], [/b[ií]ceps braquial/, 'bic'], [/braquial(?!.*b[ií]ceps)/, 'bic'], [/braquiorradial/, 'brr'],
+    [/lat[ií]ssimo/, 'lat'], [/trap[eé]zio m[eé]dio|romboide/, 'trapM'], [/trap[eé]zio superior/, 'trapS'], [/trap[eé]zio inferior/, 'trapI'],
+    [/reto abdominal|transverso/, 'abd'], [/obl[ií]quo/, 'obl']
+  ];
+  R.forEach(([re, k]) => { if (re.test(t)) m[k] = 1; });
+  return m;
+}
+
+// Monta a figura de 2 painéis com enquadramento automático (mesma escala nos dois, apoiado no chão).
+function poseFigura(def, musc) {
+  const W = 210, H = 200, CH = 196;
+  const paineis = def.poses.map(o => {
+    const frente = def.vista === 'f';
+    const J = frente ? poseJuntasFrente(o) : poseJuntas(o);
+    let svg = frente ? poseCorpoFrente(J, musc) : poseCorpoPerfil(J, musc);
+    let fundo = '';
+    let pts = Object.values(J);
+    (def.equip || []).concat(o.equip || []).forEach(e => {
+      const r = typeof e === 'string' ? POSE_EQUIP[e](J) : poseCabo(J, e.cabo, e.ponta);
+      (typeof e === 'string' && /banco|assento|encosto|caixa|plataforma|apoio/.test(e) ? (fundo += r.svg) : (svg += r.svg));
+      pts = pts.concat(r.pts);
+    });
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    return { svg: fundo + svg, x0: Math.min(...xs) - 14, x1: Math.max(...xs) + 14, y0: Math.min(...ys) - 14, y1: Math.max(...ys) + 8 };
+  });
+  const esc = Math.min(1.25, ...paineis.map(p => Math.min((W - 10) / (p.x1 - p.x0), (CH - 8) / (p.y1 - p.y0))));
+  let b = '<line x1="8" y1="' + CH + '" x2="' + (W * 2 + 2) + '" y2="' + CH + '" class="l g"/>';
+  paineis.forEach((p, i) => {
+    const tx = i * W + 5 + (W - (p.x1 - p.x0) * esc) / 2 - p.x0 * esc, ty = CH - p.y1 * esc;
+    b += '<g transform="translate(' + tx.toFixed(1) + ',' + ty.toFixed(1) + ') scale(' + esc.toFixed(3) + ')">' + p.svg + '</g>';
+    b += figTxt(i * W + 5 + W / 2, CH + 20, (def.rotulos || ['Início', 'Fim'])[i], 'tt', 'middle');
+  });
+  return figSvg(W * 2 + 10, CH + 30, b);
+}
+
+// Catálogo. Chave = id do exercício. vista 'f' = de frente. equip por exercício ou por pose.
+const EM_PE = { t: 0, c: 0, p: 0, b: 0, a: 0 };
+const pe = o => Object.assign({}, EM_PE, o);
+const POSE_CATALOGO = {
+  // ---------- PERNAS / GLÚTEO ----------
+  'agachamento-sumo-pendulo': { poses: [pe({ c: -4, c2: 4, b: 0, a: 0 }), { t: 20, c: 72, p: -30, b: 18, a: 18 }], equip: [] , rotulos: ['Em pé', 'Fundo'] },
+  'cadeira-abdutora-45': { vista: 'f', poses: [{ sentado: 1, c: 2, b: 25, a: 10 }, { sentado: 1, c: 22, b: 25, a: 10 }], equip: ['assentoF'], rotulos: ['Joelhos juntos', 'Joelhos abertos'] },
+  'cadeira-abdutora': { vista: 'f', poses: [{ sentado: 1, c: 2, b: 20, a: 10 }, { sentado: 1, c: 24, b: 20, a: 10 }], equip: ['assentoF'], rotulos: ['Joelhos juntos', 'Joelhos abertos'] },
+  'maquina-de-abducao': { vista: 'f', poses: [{ c: 2, p: 0, b: 12, a: 8 }, { c: 30, p: 0, b: 12, a: 8 }], rotulos: ['Pernas juntas', 'Pernas abertas'] },
+  'levantamento-terra-barra-reta': { poses: [{ t: 62, c: 60, p: -28, b: 5, a: 5 }, pe({})], equip: ['barra'], rotulos: ['Saída do chão', 'Topo'] },
+  'levantamento-terra-hexagonal': { poses: [{ t: 45, c: 70, p: -35, b: 0, a: 0 }, pe({})], equip: ['halter'], rotulos: ['Saída do chão', 'Topo'] },
+  'elevacao-pelvica-solo': { poses: [{ r: -90, t: 0, c: 50, p: -90, f: 90, b: 5, a: 5 }, { r: -110, t: 0, c: 0, p: -110, f: 90, b: -15, a: -15 }], equip: ['anilhaQuadril'], rotulos: ['Quadril no chão', 'Quadril em cima'] },
+  'elevacao-pelvica-banco': { poses: [{ r: -70, t: 0, c: 50, p: -70, f: 90, b: 30, a: 30 }, { r: -90, t: 0, c: 0, p: -90, f: 90, b: 10, a: 10 }], equip: ['anilhaQuadril', 'bancoOmbro'], rotulos: ['Fundo', 'Topo'] },
+  'leg-press-horizontal': { poses: [{ r: -80, t: 0, c: 45, p: -45, f: 135, b: 5, a: 5 }, { r: -80, t: 0, c: 10, p: 10, f: 80, b: 5, a: 5 }], equip: ['bancoInclinado', 'plataforma'], rotulos: ['Joelhos flexionados', 'Pernas estendidas'] },
+  'gluteo-4-apoios': { poses: [{ r: 90, t: 0, c: 90, p: 0, f: 0, b: 90, a: 90 }, { r: 90, t: 0, c: -20, p: -90, f: 90, c2: 90, p2: 0, f2: 0, b: 90, a: 90 }], rotulos: ['Joelho embaixo', 'Perna em cima'] },
+  'bulgaro': { poses: [{ t: 8, c: 8, p: 0, c2: -25, p2: 30, f2: 150, b: 0, a: 0 }, { t: 18, c: 70, p: -25, c2: -8, p2: 70, f2: 130, b: 5, a: 5 }], equip: ['halter', 'bancoPeTras'], rotulos: ['Em cima', 'Embaixo'] },
+  'stiff-halter': { poses: [pe({}), { t: 75, c: 10, p: 0, b: 8, a: 8 }], equip: ['halter'], rotulos: ['Em pé', 'Descida'] },
+  'stiff-barra': { poses: [pe({}), { t: 75, c: 10, p: 0, b: 8, a: 8 }], equip: ['barra'], rotulos: ['Em pé', 'Descida'] },
+  'agachamento-sumo': { vista: 'f', poses: [{ c: 22, p: 22, b: 8, a: 0 }, { c: 70, p: 18, b: 8, a: 0 }], equip: [], rotulos: ['Em pé', 'Fundo'] },
+  'gluteo-polia': { poses: [{ t: 30, c: 5, p: 0, c2: 0, p2: 0, b: 40, a: 40 }, { t: 30, c: -40, p: -20, c2: 0, p2: 0, b: 40, a: 40 }], equip: [{ cabo: [60, 40], ponta: 't' }], rotulos: ['Perna embaixo', 'Perna atrás'] },
+  'flexora-em-pe': { poses: [pe({ b: 30, a: 30 }), pe({ b: 30, a: 30, c: 10, p: -90 })], rotulos: ['Perna estendida', 'Joelho flexionado'] },
+  'mesa-flexora': { poses: [{ r: 90, t: 0, c: 0, p: 0, f: 0, b: 180, a: 180 }, { r: 90, t: 0, c: 0, p: -100, f: 0, b: 180, a: 180 }], equip: ['banco', 'rolo'], rotulos: ['Pernas estendidas', 'Joelhos flexionados'] },
+  'cadeira-flexora': { poses: [{ t: -10, c: 90, p: 80, b: 10, a: 60 }, { t: -10, c: 90, p: -10, b: 10, a: 60 }], equip: ['assento', 'encosto', 'rolo'], rotulos: ['Pernas estendidas', 'Joelhos flexionados'] },
+  'cadeira-extensora': { poses: [{ t: -8, c: 90, p: 0, b: 10, a: 60 }, { t: -8, c: 90, p: 85, b: 10, a: 60 }], equip: ['assento', 'encosto', 'rolo'], rotulos: ['Joelhos flexionados', 'Pernas estendidas'] },
+  'leg-press-45': { poses: [{ r: -45, t: 0, c: 115, p: 25, f: 155, b: 30, a: 30 }, { r: -45, t: 0, c: 90, p: 90, f: 90, b: 30, a: 30 }], equip: ['bancoInclinado', 'plataforma'], rotulos: ['Descida', 'Pernas estendidas'] },
+  'hack-angular': { poses: [{ t: -15, c: 80, p: -20, b: 30, a: -60 }, { t: -15, c: 5, p: 0, b: 30, a: -60 }], equip: ['encosto'], rotulos: ['Fundo', 'Topo'] },
+  'hack-linear': { poses: [{ t: -8, c: 80, p: -25, b: 30, a: -60 }, { t: -8, c: 3, p: 0, b: 30, a: -60 }], equip: ['encosto'], rotulos: ['Fundo', 'Topo'] },
+  'elevacao-pelvica-maquina': { poses: [{ r: -70, t: 0, c: 50, p: -70, f: 90, b: 30, a: 30 }, { r: -90, t: 0, c: 0, p: -90, f: 90, b: 10, a: 10 }], equip: ['bancoOmbro'], rotulos: ['Fundo', 'Topo'] },
+  'abducao-quadril-polia': { vista: 'f', poses: [{ c: 0, cD: -4, p: 0, b: 30, a: 30 }, { cE: 0, cD: 38, b: 30, a: 30 }], rotulos: ['Perna junto', 'Perna aberta'] },
+  'agachamento-smith': { poses: [pe({ b: -40, a: 150 }), { t: 25, c: 85, p: -32, b: -20, a: 170 }], equip: ['barraOmbro'], rotulos: ['Em pé', 'Fundo'] },
+  'afundo': { poses: [{ t: 0, c: 25, p: 0, c2: -20, p2: 5, f2: 120, b: 0, a: 0 }, { t: 5, c: 80, p: -8, c2: -10, p2: 80, f2: 110, b: 0, a: 0 }], equip: ['halter'], rotulos: ['Início', 'Embaixo'] },
+  'panturrilha-em-pe': { poses: [pe({ f: 90 }), pe({ f: 40 })], rotulos: ['Calcanhar embaixo', 'Na ponta do pé'] },
+  'panturrilha-sentado': { poses: [{ t: 0, c: 90, p: 0, f: 100, b: 20, a: 90 }, { t: 0, c: 90, p: 0, f: 45, b: 20, a: 90 }], equip: ['assento', 'roloCoxa'], rotulos: ['Calcanhar embaixo', 'Na ponta do pé'] },
+  'cadeira-adutora': { vista: 'f', poses: [{ sentado: 1, c: 24, b: 20, a: 10 }, { sentado: 1, c: 2, b: 20, a: 10 }], equip: ['assentoF'], rotulos: ['Joelhos abertos', 'Joelhos fechados'] },
+  'panturrilha-leg-press': { poses: [{ r: -45, t: 0, c: 90, p: 90, f: 100, b: 30, a: 30 }, { r: -45, t: 0, c: 90, p: 90, f: 45, b: 30, a: 30 }], equip: ['bancoInclinado', 'plataforma'], rotulos: ['Calcanhar embaixo', 'Ponta do pé'] },
+
+  // ---------- PEITO ----------
+  'supino-reto': { poses: [{ r: -90, t: 0, c: -45, p: -90, f: 90, b: -30, a: 90 }, { r: -90, t: 0, c: -45, p: -90, f: 90, b: 90, a: 90 }], equip: ['banco', 'halter'], rotulos: ['Descida', 'Braços estendidos'] },
+  'supino-inclinado-halter': { poses: [{ r: -55, t: 0, c: -10, p: -55, f: 90, b: 5, a: 125 }, { r: -55, t: 0, c: -10, p: -55, f: 90, b: 125, a: 125 }], equip: ['bancoInclinado', 'halter'], rotulos: ['Descida', 'Braços estendidos'] },
+  'supino-declinado-halter': { poses: [{ r: -110, t: 0, c: 0, p: -90, f: 90, b: -50, a: 70 }, { r: -110, t: 0, c: 0, p: -90, f: 90, b: 70, a: 70 }], equip: ['bancoInclinado', 'halter'], rotulos: ['Descida', 'Braços estendidos'] },
+  'crucifixo-halter': { vista: 'f', poses: [{ b: 90, a: 95 }, { b: 30, a: -60, encurta: 0.4 }], equip: ['halterF'], rotulos: ['Braços abertos', 'Braços fechados'], vistoDeCima: 1 },
+  'crossover-polia': { vista: 'f', poses: [{ b: 120, a: 110 }, { b: 25, a: -40 }], equip: [], rotulos: ['Braços abertos', 'Mãos juntas à frente'] },
+  'peck-deck': { vista: 'f', poses: [{ b: 90, a: 90 }, { b: 30, a: -60, encurta: 0.4 }], rotulos: ['Braços abertos', 'Braços fechados'] },
+  'flexao-de-braco': { poses: [{ r: 88, t: 0, c: 0, p: 0, f: 88, b: 43, a: 88 }, { r: 72, t: 0, c: 0, p: 0, f: 72, b: 72, a: 72 }], rotulos: ['Descida', 'Em cima'] },
+  'pullover': { poses: [{ r: -90, t: 0, c: -45, p: -90, f: 90, b: 170, a: 170 }, { r: -90, t: 0, c: -45, p: -90, f: 90, b: 90, a: 90 }], equip: ['banco', 'halter'], rotulos: ['Braços atrás da cabeça', 'Braços acima do peito'] },
+
+  // ---------- COSTAS ----------
+  'remada-curvada': { poses: [{ t: 50, c: 20, p: -10, b: 0, a: 0 }, { t: 50, c: 20, p: -10, b: -60, a: 5 }], equip: ['barra'], rotulos: ['Braços estendidos', 'Barra no abdômen'] },
+  'remada-curvada-neutra': { poses: [{ t: 50, c: 20, p: -10, b: 0, a: 0 }, { t: 50, c: 20, p: -10, b: -60, a: 5 }], equip: ['halter'], rotulos: ['Braços estendidos', 'Halteres no quadril'] },
+  'remada-curvada-pronada': { poses: [{ t: 50, c: 20, p: -10, b: 0, a: 0 }, { t: 50, c: 20, p: -10, b: -75, a: 0 }], equip: ['barra'], rotulos: ['Braços estendidos', 'Cotovelos abertos para trás'] },
+  'remada-cavalo': { poses: [{ t: 45, c: 25, p: -15, b: 0, a: 0 }, { t: 45, c: 25, p: -15, b: -60, a: 5 }], equip: ['barra'], rotulos: ['Braços estendidos', 'Puxada'] },
+  'puxada-vertical-pronada': { poses: [{ t: -12, c: 90, p: 0, b: 170, a: 175 }, { t: -12, c: 90, p: 0, b: 20, a: 170 }], equip: ['assento', 'roloCoxa', 'barraFixa'], rotulos: ['Braços em cima', 'Barra no peito'] },
+  'puxada-vertical-aberta': { poses: [{ t: -12, c: 90, p: 0, b: 170, a: 175 }, { t: -12, c: 90, p: 0, b: 25, a: 165 }], equip: ['assento', 'roloCoxa', 'barraFixa'], rotulos: ['Braços em cima', 'Barra no peito'] },
+  'puxada-vertical-neutra': { poses: [{ t: -12, c: 90, p: 0, b: 170, a: 175 }, { t: -12, c: 90, p: 0, b: 10, a: 170 }], equip: ['assento', 'roloCoxa', 'barraFixa'], rotulos: ['Braços em cima', 'Pegador no peito'] },
+  'pulldown-barra': { poses: [{ t: 25, c: 10, p: 0, b: 150, a: 150 }, { t: 25, c: 10, p: 0, b: 20, a: 20 }], equip: [{ cabo: [80, -150] }], rotulos: ['Braços em cima', 'Barra nas coxas'] },
+  'pulldown-corda': { poses: [{ t: 25, c: 10, p: 0, b: 150, a: 150 }, { t: 25, c: 10, p: 0, b: 5, a: 5 }], equip: [{ cabo: [80, -150] }], rotulos: ['Braços em cima', 'Corda no quadril'] },
+  'remada-baixa-pronada': { poses: [{ t: 10, c: 80, p: 70, f: 90, b: 90, a: 90 }, { t: -5, c: 80, p: 70, f: 90, b: -40, a: 80 }], equip: [{ cabo: [150, 10] }], rotulos: ['Braços estendidos', 'Puxada'] },
+  'remada-baixa-neutra': { poses: [{ t: 10, c: 80, p: 70, f: 90, b: 90, a: 90 }, { t: -5, c: 80, p: 70, f: 90, b: -35, a: 85 }], equip: [{ cabo: [150, 10] }], rotulos: ['Braços estendidos', 'Puxada'] },
+  'remada-baixa-supinada': { poses: [{ t: 10, c: 80, p: 70, f: 90, b: 90, a: 90 }, { t: -5, c: 80, p: 70, f: 90, b: -35, a: 85 }], equip: [{ cabo: [150, 10] }], rotulos: ['Braços estendidos', 'Puxada'] },
+  'remada-maquina': { poses: [{ t: 5, c: 90, p: 0, b: 90, a: 90 }, { t: 5, c: 90, p: 0, b: -35, a: 85 }], equip: ['assento'], rotulos: ['Braços estendidos', 'Puxada'] },
+  'remada-maquina-articular': { poses: [{ t: 10, c: 90, p: 0, b: 80, a: 80 }, { t: 10, c: 90, p: 0, b: -35, a: 80 }], equip: ['assento'], rotulos: ['Braços estendidos', 'Puxada'] },
+
+  // ---------- OMBROS / TRAPÉZIO ----------
+  'desenvolvimento-halter': { vista: 'f', poses: [{ b: 90, a: 180 }, { b: 160, a: 175 }], equip: ['halterF'], rotulos: ['Halteres nos ombros', 'Braços em cima'] },
+  'desenvolvimento-maquina': { vista: 'f', poses: [{ b: 90, a: 180 }, { b: 160, a: 175 }], rotulos: ['Pegadores nos ombros', 'Braços em cima'] },
+  'desenvolvimento-militar-barra': { poses: [pe({ b: 20, a: 170 }), pe({ b: 175, a: 178 })], equip: ['barra'], rotulos: ['Barra no peito', 'Barra acima da cabeça'] },
+  'elevacao-lateral': { vista: 'f', poses: [{ b: 8, a: 8 }, { b: 88, a: 88 }], equip: ['halterF'], rotulos: ['Braços ao lado', 'Braços na altura dos ombros'] },
+  'elevacao-lateral-polia': { vista: 'f', poses: [{ bE: 8, bD: -20, a: 8, aD: -20 }, { bE: 8, bD: 88, aE: 8, aD: 88 }], rotulos: ['Braço cruzado à frente', 'Braço na altura do ombro'] },
+  'elevacao-frontal-halter': { poses: [pe({ b: 5, a: 5 }), pe({ b: 90, a: 90 })], equip: ['halter'], rotulos: ['Braços embaixo', 'Braços à frente'] },
+  'elevacao-frontal-polia': { poses: [pe({ b: 5, a: 5 }), pe({ b: 90, a: 90 })], equip: [{ cabo: [-40, 42] }], rotulos: ['Braços embaixo', 'Braços à frente'] },
+  'crucifixo-inverso-halter': { vista: 'f', poses: [{ b: 10, a: 10 }, { b: 85, a: 88 }], equip: ['halterF'], rotulos: ['Braços embaixo', 'Braços abertos'], deCostas: 1 },
+  'crucifixo-inverso-maquina': { vista: 'f', poses: [{ b: 30, a: -60, encurta: 0.4 }, { b: 90, a: 90 }], rotulos: ['Braços à frente', 'Braços abertos'], deCostas: 1 },
+  'elevacao-y': { vista: 'f', poses: [{ b: 15, a: 15 }, { b: 145, a: 145 }], equip: ['halterF'], rotulos: ['Braços embaixo', 'Braços em Y'], deCostas: 1 },
+  'encolhimento-barra': { vista: 'f', poses: [{ b: 4, a: 4 }, { b: 4, a: 4, encolhe: 1 }], rotulos: ['Ombros relaxados', 'Ombros encolhidos'] },
+  'encolhimento-halter': { vista: 'f', poses: [{ b: 4, a: 4 }, { b: 4, a: 4, encolhe: 1 }], equip: ['halterF'], rotulos: ['Ombros relaxados', 'Ombros encolhidos'] },
+
+  // ---------- BRAÇOS ----------
+  'rosca-direta-barra': { poses: [pe({ b: 3, a: 3 }), pe({ b: 8, a: 150 })], equip: ['barra'], rotulos: ['Braços estendidos', 'Topo'] },
+  'rosca-martelo-barra': { poses: [pe({ b: 3, a: 3 }), pe({ b: 8, a: 150 })], equip: ['halter'], rotulos: ['Braços estendidos', 'Topo'] },
+  'rosca-martelo-halter': { poses: [pe({ b: 3, a: 3 }), pe({ b: 8, a: 150 })], equip: ['halter'], rotulos: ['Braços estendidos', 'Topo'] },
+  'rosca-direta-corda-polia': { poses: [pe({ b: 3, a: 10 }), pe({ b: 8, a: 150 })], equip: [{ cabo: [40, 44] }], rotulos: ['Braços estendidos', 'Topo'] },
+  'rosca-direta-polia': { poses: [pe({ b: 3, a: 10 }), pe({ b: 8, a: 150 })], equip: [{ cabo: [40, 44] }], rotulos: ['Braços estendidos', 'Topo'] },
+  'rosca-21': { poses: [pe({ b: 3, a: 3 }), pe({ b: 8, a: 150 })], equip: ['barra'], rotulos: ['Embaixo', 'Topo'] },
+  'rosca-scott-halter': { poses: [{ t: 15, c: 90, p: 0, b: 45, a: 50 }, { t: 15, c: 90, p: 0, b: 45, a: 170 }], equip: ['assento', 'apoioScott', 'halter'], rotulos: ['Braço estendido', 'Topo'] },
+  'rosca-scott-barra': { poses: [{ t: 15, c: 90, p: 0, b: 45, a: 50 }, { t: 15, c: 90, p: 0, b: 45, a: 170 }], equip: ['assento', 'apoioScott', 'barra'], rotulos: ['Braços estendidos', 'Topo'] },
+  'rosca-scott-maquina': { poses: [{ t: 15, c: 90, p: 0, b: 45, a: 50 }, { t: 15, c: 90, p: 0, b: 45, a: 170 }], equip: ['assento', 'apoioScott'], rotulos: ['Braços estendidos', 'Topo'] },
+  'rosca-direta-banco-inclinado': { poses: [{ t: -35, c: 80, p: 0, b: -15, a: -15 }, { t: -35, c: 80, p: 0, b: -15, a: 120 }], equip: ['assento', 'encosto', 'halter'], rotulos: ['Braço atrás do tronco', 'Topo'] },
+  'rosca-concentrada': { poses: [{ t: 40, c: 85, p: 0, b: 20, a: 20 }, { t: 40, c: 85, p: 0, b: 20, a: 160 }], equip: ['assento', 'halter'], rotulos: ['Braço estendido', 'Topo'] },
+  'triceps-testa': { poses: [{ r: -90, t: 0, c: -45, p: -90, f: 90, b: 110, a: 210 }, { r: -90, t: 0, c: -45, p: -90, f: 90, b: 100, a: 100 }], equip: ['banco', 'barra'], rotulos: ['Barra perto da testa', 'Braços estendidos'] },
+  'triceps-testa-polia': { poses: [{ r: -90, t: 0, c: -45, p: -90, f: 90, b: 110, a: 210 }, { r: -90, t: 0, c: -45, p: -90, f: 90, b: 100, a: 100 }], equip: ['banco', { cabo: [-110, 30] }], rotulos: ['Mãos perto da testa', 'Braços estendidos'] },
+  'triceps-frances-polia': { poses: [{ t: 30, c: 15, p: -5, b: 160, a: 30 }, { t: 30, c: 15, p: -5, b: 160, a: 160 }], equip: [{ cabo: [-40, -40] }], rotulos: ['Cotovelo flexionado', 'Braço estendido'] },
+  'triceps-frances-anilha': { poses: [pe({ b: 170, a: 20 }), pe({ b: 175, a: 178 })], equip: ['barra'], rotulos: ['Anilha atrás da cabeça', 'Braços estendidos'] },
+  'triceps-frances-halter': { poses: [pe({ b: 170, a: 20 }), pe({ b: 175, a: 178 })], equip: ['halter'], rotulos: ['Halter atrás da cabeça', 'Braços estendidos'] },
+  'triceps-corda-polia': { poses: [pe({ t: 8, b: -5, a: 120 }), pe({ t: 8, b: -5, a: 5 })], equip: [{ cabo: [40, -150] }], rotulos: ['Cotovelos flexionados', 'Braços estendidos'] },
+  'triceps-pulley-barra': { poses: [pe({ t: 8, b: -5, a: 120 }), pe({ t: 8, b: -5, a: 10 })], equip: [{ cabo: [40, -150] }], rotulos: ['Cotovelos flexionados', 'Braços estendidos'] },
+  'triceps-coice': { poses: [{ t: 65, c: 20, p: -10, b: -65, a: 0 }, { t: 65, c: 20, p: -10, b: -65, a: -65 }], equip: ['halter'], rotulos: ['Cotovelo flexionado', 'Braço estendido'] },
+  'triceps-mergulho-banco': { poses: [{ t: 0, c: 90, p: 90, f: 90, b: -45, a: 10 }, { t: 0, c: 90, p: 90, f: 90, b: -12, a: -12 }], equip: ['apoioMaos'], rotulos: ['Descida', 'Braços estendidos'] },
+
+  // ---------- ABDÔMEN ----------
+  'abdominal-supra': { poses: [{ r: -90, t: 0, c: 45, p: -45, f: 45, b: 10, a: 10 }, { r: -90, t: 35, c: 45, p: -45, f: 45, b: 25, a: 25 }], rotulos: ['Deitada', 'Tronco enrolado'] },
+  'prancha-abdominal': { poses: [{ r: 80, t: 0, c: 0, p: 0, f: 80, b: 80, a: 170 }, { r: 80, t: 0, c: 0, p: 0, f: 80, b: 80, a: 170 }], rotulos: ['Posição', 'Segurar alinhada'] },
+  'elevacao-de-pernas': { poses: [{ r: -90, t: 0, c: 10, p: 0, f: 90, b: 0, a: 0 }, { r: -90, t: 0, c: 90, p: 0, f: 90, b: 0, a: 0 }], rotulos: ['Pernas embaixo', 'Pernas em cima'] },
+  'abdominal-obliquo-polia': { vista: 'f', poses: [{ bE: 140, aE: 140, bD: -140, aD: -140 }, { bE: -35, aE: -35, bD: 35, aD: 35 }], rotulos: ['Mãos no alto, de um lado', 'Mãos embaixo, do outro lado'] }
+};
+
+function ilustracaoPose(key) {
+  const def = POSE_CATALOGO[key], e = EXERCICIOS[key];
+  if (!def || !e) return null;
+  const musc = poseMusculosDe(e.primarios.map(p => p.n));
+  if (def.deCostas) musc.costas = 1;
+  const nomes = e.primarios.map(p => p.n.replace(/\s*\(.*\)/, '')).join(', ');
+  return { svg: poseFigura(def, musc), legenda: 'Em destaque: ' + nomes + '.' + (def.vistoDeCima ? ' Vista de cima.' : def.deCostas ? ' Vista de trás.' : '') };
 }
 
 function showTrilhaDetail(trilhaKey, key) {
